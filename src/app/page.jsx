@@ -8,7 +8,7 @@ export default function Home() {
     <div className="flex flex-col min-h-screen">
       <header className="border-b">
         <div className="container flex items-center justify-between py-4">
-          <h1 className="text-2xl font-bold">Auth System</h1>
+          <h1 className="text-2xl font-bold">Delivery System</h1>
           <nav>
             <ClientNav />
           </nav>
@@ -16,9 +16,9 @@ export default function Home() {
       </header>
       <main className="flex-1 container py-12">
         <div className="max-w-3xl mx-auto text-center space-y-8">
-          <h2 className="text-4xl font-bold tracking-tight">Secure Authentication System</h2>
+          <h2 className="text-4xl font-bold tracking-tight">Delivery System</h2>
           <p className="text-xl text-muted-foreground">
-            A complete authentication solution with email verification, social login, and role-based access control.
+            A complete delivery solution for your business
           </p>
           <div className="flex items-center justify-center gap-4">
             <Button asChild size="lg">
@@ -32,7 +32,7 @@ export default function Home() {
       </main>
       <footer className="border-t py-6">
         <div className="container text-center text-sm text-muted-foreground">
-          &copy; {new Date().getFullYear()} Auth System. All rights reserved.
+          &copy; {new Date().getFullYear()} Delivery System. All rights reserved.
         </div>
       </footer>
     </div>
