@@ -5,11 +5,7 @@
     "paths": {
       "@/*": ["./*"]
     },
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": false,
@@ -31,9 +27,12 @@
     "next-env.d.ts",
     ".next/types/**/*.ts",
     "**/*.ts",
-    "**/*.tsx"
+    "**/*.tsx",
+    "app/dashboard/menu-items/page.jsx",
+    "app/dashboard/menu-items/new/page.jsx",
+    "app/dashboard/menu-items/new/page.jsx",
+    "app/dashboard/menu-items/new/page.jsx",
+    "app/dashboard/page.jsx"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }
