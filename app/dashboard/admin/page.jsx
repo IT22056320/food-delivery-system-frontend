@@ -1,328 +1,235 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useAuth } from "@/hooks/use-auth"
-import { motion } from "framer-motion"
-import {
-  Pizza,
-  Home,
-  Users,
-  Store,
-  ClipboardList,
-  Settings,
-  Bell,
-  Search,
-  ChevronRight,
-  TrendingUp,
-  ArrowUpRight,
-  Plus,
-  MoreHorizontal,
-  Filter,
-  LogOut,
-} from "lucide-react"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Progress } from "@/components/ui/progress"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@/hooks/use-auth"
+import { getSystemStats } from "@/lib/restaurant-api"
 import { toast } from "sonner"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Store,
+  Users,
+  ShoppingBag,
+  TrendingUp,
+  DollarSign,
+  Clock,
+  BarChart3,
+  PieChart,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+} from "lucide-react"
 
-// Sample data for the admin dashboard
-const recentUsers = [
-  {
-    id: 1,
-    name: "John Doe",
-    email: "john@example.com",
-    joined: "Today, 2:30 PM",
-    orders: 12,
-    image: "/placeholder.svg?height=40&width=40",
-  },
-  {
-    id: 2,
-    name: "Sarah Smith",
-    email: "sarah@example.com",
-    joined: "Yesterday, 1:15 PM",
-    orders: 8,
-    image: "/placeholder.svg?height=40&width=40",
-  },
-  {
-    id: 3,
-    name: "Mike Johnson",
-    email: "mike@example.com",
-    joined: "Yesterday, 10:45 AM",
-    orders: 5,
-    image: "/placeholder.svg?height=40&width=40",
-  },
-]
-
-const topRestaurants = [
-  {
-    id: 1,
-    name: "Burger Palace",
-    orders: 145,
-    revenue: 2850,
-    rating: 4.8,
-    image: "/placeholder.svg?height=60&width=60",
-  },
-  {
-    id: 2,
-    name: "Pizza Heaven",
-    orders: 132,
-    revenue: 2340,
-    rating: 4.6,
-    image: "/placeholder.svg?height=60&width=60",
-  },
-  { id: 3, name: "Taco Fiesta", orders: 98, revenue: 1780, rating: 4.5, image: "/placeholder.svg?height=60&width=60" },
-]
-
-const recentOrders = [
-  {
-    id: "ORD-7291",
-    user: "John Doe",
-    restaurant: "Burger Palace",
-    total: 24.99,
-    status: "Delivered",
-    date: "Today, 2:30 PM",
-  },
-  {
-    id: "ORD-6432",
-    user: "Sarah Smith",
-    restaurant: "Pizza Heaven",
-    total: 18.5,
-    status: "On the way",
-    date: "Today, 12:15 PM",
-  },
-  {
-    id: "ORD-5128",
-    user: "Mike Johnson",
-    restaurant: "Taco Fiesta",
-    total: 32.75,
-    status: "Preparing",
-    date: "Today, 11:45 AM",
-  },
-  {
-    id: "ORD-4982",
-    user: "Emily Davis",
-    restaurant: "Sushi World",
-    total: 45.2,
-    status: "Delivered",
-    date: "Yesterday, 7:30 PM",
-  },
-  {
-    id: "ORD-4879",
-    user: "Robert Wilson",
-    restaurant: "Green Eats",
-    total: 16.8,
-    status: "Delivered",
-    date: "Yesterday, 6:15 PM",
-  },
-]
-
-export default function AdminDashboard() {
-  const { user, loading, logout } = useAuth()
+export default function AdminDashboardPage() {
+  const { user, loading } = useAuth()
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState("dashboard")
   const [isLoading, setIsLoading] = useState(true)
+  const [stats, setStats] = useState(null)
+  const [timeFilter, setTimeFilter] = useState("today")
+  const [activeTab, setActiveTab] = useState("overview")
 
   useEffect(() => {
-    if (!loading && user?.role !== "admin") {
+    if (!loading && (!user || user.role !== "admin")) {
       router.push("/")
+      toast.error("You don't have permission to access this page")
     }
   }, [user, loading, router])
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false)
-    }, 1000)
-    return () => clearTimeout(timer)
-  }, [])
+    const fetchStats = async () => {
+      try {
+        setIsLoading(true)
+        const data = await getSystemStats()
+        setStats(data)
+      } catch (error) {
+        toast.error("Failed to fetch system statistics")
+        console.error(error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
 
-  if (loading || !user) {
-    return <div className="p-6">Loading...</div>
-  }
+    if (user && !loading && user.role === "admin") {
+      fetchStats()
+    }
+  }, [user, loading, timeFilter])
 
-  const container = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-      },
+  // If no stats are available yet, use placeholder data
+  const placeholderStats = {
+    restaurants: {
+      total: 45,
+      verified: 38,
+      pending: 7,
+      growth: 12,
+    },
+    orders: {
+      total: 1250,
+      completed: 1180,
+      cancelled: 45,
+      pending: 25,
+      growth: 8,
+    },
+    users: {
+      total: 2800,
+      customers: 2650,
+      restaurantOwners: 120,
+      deliveryPersonnel: 30,
+      growth: 15,
+    },
+    revenue: {
+      total: 28500,
+      growth: 10,
+      averageOrderValue: 22.8,
+    },
+    popular: {
+      cuisines: [
+        { name: "Italian", count: 450 },
+        { name: "Chinese", count: 380 },
+        { name: "Indian", count: 320 },
+        { name: "Mexican", count: 280 },
+        { name: "Japanese", count: 220 },
+      ],
+      restaurants: [
+        { name: "Pizza Palace", orders: 180 },
+        { name: "Burger Barn", orders: 165 },
+        { name: "Sushi Supreme", orders: 140 },
+        { name: "Taco Town", orders: 125 },
+        { name: "Pasta Paradise", orders: 110 },
+      ],
     },
   }
 
-  const item = {
-    hidden: { y: 20, opacity: 0 },
-    show: { y: 0, opacity: 1 },
-  }
-
-  const handleLogout = async () => {
-    try {
-      await fetch("http://localhost:5000/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      })
-      logout()
-      router.push("/login")
-      toast.success("Logged out successfully")
-    } catch (error) {
-      console.error("Logout failed:", error)
-      toast.error("Logout failed. Please try again.")
-    }
-  }
+  const displayStats = stats || placeholderStats
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-amber-50 to-orange-100">
+    <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Sidebar */}
       <div className="w-56 bg-white shadow-md flex flex-col">
         <div className="p-4 border-b">
           <div className="flex items-center gap-2">
-            <Pizza className="h-8 w-8 text-orange-500" />
+            <Store className="h-8 w-8 text-blue-500" />
             <span className="font-bold text-xl">FoodHub</span>
           </div>
         </div>
 
         <div className="flex flex-col p-4 flex-1">
-          <p className="text-gray-500 text-sm mb-4">Admin Control Panel</p>
+          <p className="text-gray-500 text-sm mb-4">Admin Dashboard</p>
 
           <nav className="space-y-1">
             <Button
-              variant={activeTab === "dashboard" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "dashboard" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
-              onClick={() => setActiveTab("dashboard")}
+              variant="default"
+              className="w-full justify-start bg-blue-500 hover:bg-blue-600"
+              onClick={() => router.push("/dashboard/admin")}
             >
-              <Home className="mr-2 h-5 w-5" />
-              Dashboard
+              <BarChart3 className="mr-2 h-5 w-5" />
+              Overview
             </Button>
 
             <Button
-              variant={activeTab === "users" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "users" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
-              onClick={() => setActiveTab("users")}
-            >
-              <Users className="mr-2 h-5 w-5" />
-              Users
-            </Button>
-
-            <Button
-              variant={activeTab === "restaurants" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "restaurants" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
-              onClick={() => setActiveTab("restaurants")}
+              variant="ghost"
+              className="w-full justify-start"
+              onClick={() => router.push("/dashboard/admin/restaurants")}
             >
               <Store className="mr-2 h-5 w-5" />
               Restaurants
             </Button>
 
             <Button
-              variant={activeTab === "orders" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "orders" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
-              onClick={() => setActiveTab("orders")}
+              variant="ghost"
+              className="w-full justify-start"
+              onClick={() => router.push("/dashboard/admin/users")}
             >
-              <ClipboardList className="mr-2 h-5 w-5" />
-              Orders
-            </Button>
-
-            <Button
-              variant={activeTab === "settings" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "settings" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
-              onClick={() => setActiveTab("settings")}
-            >
-              <Settings className="mr-2 h-5 w-5" />
-              Settings
+              <Users className="mr-2 h-5 w-5" />
+              Users
             </Button>
 
             <Button
               variant="ghost"
-              className="w-full justify-start text-red-500 hover:bg-red-50 hover:text-red-600 mt-4"
-              onClick={handleLogout}
+              className="w-full justify-start"
+              onClick={() => router.push("/dashboard/admin/orders")}
             >
-              <LogOut className="mr-2 h-5 w-5" />
-              Logout
+              <ShoppingBag className="mr-2 h-5 w-5" />
+              Orders
             </Button>
           </nav>
-        </div>
-
-        <div className="p-4 mt-auto">
-          <Card className="bg-orange-500 text-white border-none shadow-md">
-            <CardContent className="p-4">
-              <div className="flex flex-col items-center gap-2">
-                <TrendingUp className="h-8 w-8" />
-                <p className="text-sm font-medium">View Analytics</p>
-                <Button size="sm" variant="outline" className="bg-white text-orange-500 hover:bg-orange-50 w-full">
-                  Open Reports
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 p-6">
-        {/* Header */}
-        <header className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-2xl font-bold">
-              {isLoading ? (
-                <div className="h-8 w-40 bg-gray-200 animate-pulse rounded"></div>
-              ) : (
-                <motion.span
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  Admin Dashboard
-                </motion.span>
-              )}
-            </h1>
-            <p className="text-gray-500">Welcome back, {user?.name || "Admin"}</p>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input placeholder="Search..." className="pl-10 w-[300px] bg-white border-none" />
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+              <p className="text-gray-500">System overview and statistics</p>
             </div>
-
-            <Button size="icon" variant="outline" className="relative">
-              <Bell className="h-5 w-5" />
-              <span className="absolute -top-1 -right-1 h-4 w-4 bg-orange-500 rounded-full text-[10px] text-white flex items-center justify-center">
-                5
-              </span>
-            </Button>
-
-            <Avatar>
-              <AvatarImage src="/placeholder.svg?height=40&width=40" />
-              <AvatarFallback className="bg-orange-200 text-orange-700">{user?.name?.charAt(0) || "A"}</AvatarFallback>
-            </Avatar>
           </div>
-        </header>
 
-        {/* Main Content */}
-        <motion.div
-          variants={container}
-          initial="hidden"
-          animate={isLoading ? "hidden" : "show"}
-          className="flex flex-col lg:flex-row gap-6"
-        >
-          {/* Left Column */}
-          <motion.div variants={item} className="flex-1 space-y-6">
-            {/* Quick Stats */}
-            <div className="grid grid-cols-3 gap-4">
+          {/* Time Period Filter */}
+          <div className="mb-6">
+            <Tabs defaultValue="today" value={timeFilter} onValueChange={setTimeFilter}>
+              <TabsList>
+                <TabsTrigger value="today">Today</TabsTrigger>
+                <TabsTrigger value="week">This Week</TabsTrigger>
+                <TabsTrigger value="month">This Month</TabsTrigger>
+                <TabsTrigger value="year">This Year</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {[1, 2, 3, 4].map((i) => (
+                <Card key={i} className="border-none shadow-md">
+                  <CardContent className="p-6">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="h-4 w-24 bg-gray-200 rounded mb-2"></div>
+                        <div className="h-6 w-16 bg-gray-300 rounded mt-1 mb-2"></div>
+                        <div className="h-3 w-32 bg-gray-200 rounded mt-1"></div>
+                      </div>
+                      <div className="h-12 w-12 bg-gray-200 rounded-full"></div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
+                <CardContent className="p-6">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-gray-500 text-sm">Total Restaurants</p>
+                      <h3 className="text-2xl font-bold mt-1">{displayStats?.restaurants?.total || 0}</h3>
+                      <p className="text-green-500 text-xs mt-1 flex items-center">
+                        <TrendingUp className="h-3 w-3 mr-1" /> +{displayStats?.restaurants?.growth || 0}% from last{" "}
+                        {timeFilter}
+                      </p>
+                    </div>
+                    <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Store className="h-6 w-6 text-blue-500" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
                 <CardContent className="p-6">
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-500 text-sm">Total Orders</p>
-                      <h3 className="text-2xl font-bold mt-1">1,248</h3>
+                      <h3 className="text-2xl font-bold mt-1">{displayStats?.orders?.total || 0}</h3>
                       <p className="text-green-500 text-xs mt-1 flex items-center">
-                        <TrendingUp className="h-3 w-3 mr-1" /> +12.5% this week
+                        <TrendingUp className="h-3 w-3 mr-1" /> +{displayStats?.orders?.growth || 0}% from last{" "}
+                        {timeFilter}
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-orange-100 rounded-full flex items-center justify-center">
-                      <ClipboardList className="h-6 w-6 text-orange-500" />
+                      <ShoppingBag className="h-6 w-6 text-orange-500" />
                     </div>
                   </div>
                 </CardContent>
@@ -333,13 +240,14 @@ export default function AdminDashboard() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-500 text-sm">Total Users</p>
-                      <h3 className="text-2xl font-bold mt-1">842</h3>
+                      <h3 className="text-2xl font-bold mt-1">{displayStats?.users?.total || 0}</h3>
                       <p className="text-green-500 text-xs mt-1 flex items-center">
-                        <TrendingUp className="h-3 w-3 mr-1" /> +8.2% this week
+                        <TrendingUp className="h-3 w-3 mr-1" /> +{displayStats?.users?.growth || 0}% from last{" "}
+                        {timeFilter}
                       </p>
                     </div>
-                    <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
-                      <Users className="h-6 w-6 text-blue-500" />
+                    <div className="h-12 w-12 bg-purple-100 rounded-full flex items-center justify-center">
+                      <Users className="h-6 w-6 text-purple-500" />
                     </div>
                   </div>
                 </CardContent>
@@ -350,275 +258,212 @@ export default function AdminDashboard() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-500 text-sm">Total Revenue</p>
-                      <h3 className="text-2xl font-bold mt-1">$24,582</h3>
+                      <h3 className="text-2xl font-bold mt-1">${displayStats?.revenue?.total || 0}</h3>
                       <p className="text-green-500 text-xs mt-1 flex items-center">
-                        <TrendingUp className="h-3 w-3 mr-1" /> +15.3% this week
+                        <TrendingUp className="h-3 w-3 mr-1" /> +{displayStats?.revenue?.growth || 0}% from last{" "}
+                        {timeFilter}
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="text-green-500"
-                      >
-                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                      </svg>
+                      <DollarSign className="h-6 w-6 text-green-500" />
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </div>
+          )}
 
-            {/* Recent Orders */}
-            <Card className="border-none shadow-md">
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-center">
-                  <CardTitle>Recent Orders</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" className="h-8 gap-1">
-                      <Filter className="h-3 w-3" /> Filter
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-orange-500 hover:text-orange-600 hover:bg-orange-50 flex items-center gap-1"
-                    >
-                      View All <ChevronRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="text-left text-xs text-gray-500 border-b">
-                        <th className="pb-2 font-medium">Order ID</th>
-                        <th className="pb-2 font-medium">Customer</th>
-                        <th className="pb-2 font-medium">Restaurant</th>
-                        <th className="pb-2 font-medium">Amount</th>
-                        <th className="pb-2 font-medium">Date</th>
-                        <th className="pb-2 font-medium">Status</th>
-                        <th className="pb-2 font-medium"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recentOrders.map((order, index) => (
-                        <motion.tr
-                          key={order.id}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: index * 0.05 }}
-                          className="border-b border-gray-100 text-sm"
-                        >
-                          <td className="py-3 font-medium">{order.id}</td>
-                          <td className="py-3">{order.user}</td>
-                          <td className="py-3">{order.restaurant}</td>
-                          <td className="py-3">${order.total.toFixed(2)}</td>
-                          <td className="py-3 text-gray-500">{order.date}</td>
-                          <td className="py-3">
-                            <Badge
-                              className={
-                                order.status === "Delivered"
-                                  ? "bg-green-100 text-green-700 hover:bg-green-100"
-                                  : order.status === "On the way"
-                                    ? "bg-blue-100 text-blue-700 hover:bg-blue-100"
-                                    : "bg-amber-100 text-amber-700 hover:bg-amber-100"
-                              }
-                            >
-                              {order.status}
-                            </Badge>
-                          </td>
-                          <td className="py-3">
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </td>
-                        </motion.tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Top Restaurants */}
-            <Card className="border-none shadow-md">
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-center">
-                  <CardTitle>Top Performing Restaurants</CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-orange-500 hover:text-orange-600 hover:bg-orange-50 flex items-center gap-1"
-                  >
-                    View All <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {topRestaurants.map((restaurant, index) => (
-                    <motion.div
-                      key={restaurant.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      className="flex items-center gap-4 p-3 rounded-lg hover:bg-white transition-colors"
-                    >
-                      <div className="h-16 w-16 rounded-lg overflow-hidden bg-gray-100">
-                        <img
-                          src={restaurant.image || "/placeholder.svg"}
-                          alt={restaurant.name}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex justify-between">
-                          <h4 className="font-medium">{restaurant.name}</h4>
-                          <p className="text-sm font-medium text-green-600">${restaurant.revenue}</p>
-                        </div>
-                        <div className="mt-1">
-                          <div className="flex justify-between mb-1">
-                            <p className="text-xs text-gray-500">
-                              {restaurant.orders} orders · Rating: {restaurant.rating}
-                            </p>
-                            <p className="text-xs text-gray-500">85% completed</p>
-                          </div>
-                          <Progress value={85} className="h-1" />
-                        </div>
-                      </div>
-                      <Button size="sm" variant="ghost" className="h-8 w-8">
-                        <ArrowUpRight className="h-4 w-4" />
-                      </Button>
-                    </motion.div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* Right Column */}
-          <motion.div variants={item} className="w-[350px] space-y-6">
-            {/* Quick Actions */}
-            <Card className="border-none shadow-md bg-orange-500 text-white">
-              <CardHeader className="pb-2">
-                <CardTitle>Quick Actions</CardTitle>
-                <CardDescription className="text-orange-100">Manage your platform</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button className="w-full bg-white text-orange-500 hover:bg-orange-50 justify-start">
-                  <Plus className="mr-2 h-4 w-4" /> Add New Restaurant
-                </Button>
-                <Button className="w-full bg-white text-orange-500 hover:bg-orange-50 justify-start">
-                  <Plus className="mr-2 h-4 w-4" /> Create Promotion
-                </Button>
-                <Button className="w-full bg-white text-orange-500 hover:bg-orange-50 justify-start">
-                  <Plus className="mr-2 h-4 w-4" /> Send Notification
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Recent Users */}
-            <Card className="border-none shadow-md">
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-center">
-                  <CardTitle>Recent Users</CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-orange-500 hover:text-orange-600 hover:bg-orange-50 flex items-center gap-1"
-                  >
-                    View All <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {recentUsers.map((user, index) => (
-                    <motion.div
-                      key={user.id}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-white transition-all cursor-pointer"
-                    >
-                      <Avatar>
-                        <AvatarImage src={user.image} />
-                        <AvatarFallback className="bg-orange-200 text-orange-700">{user.name.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-medium truncate">{user.name}</h4>
-                        <p className="text-xs text-gray-500 truncate">{user.email}</p>
-                        <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
-                          <span>Joined: {user.joined}</span>
-                          <span>•</span>
-                          <span>{user.orders} orders</span>
-                        </div>
-                      </div>
-                      <Button size="icon" variant="ghost" className="h-8 w-8">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </motion.div>
-                  ))}
-                </div>
-              </CardContent>
-              <CardFooter className="border-t pt-4">
-                <Button className="w-full" variant="outline">
-                  <Plus className="mr-2 h-4 w-4" /> Add New User
-                </Button>
-              </CardFooter>
-            </Card>
-
-            {/* System Status */}
-            <Card className="border-none shadow-md">
-              <CardHeader className="pb-2">
-                <CardTitle>System Status</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <p className="text-sm">Server Load</p>
-                    <p className="text-sm font-medium">42%</p>
-                  </div>
-                  <Progress value={42} className="h-2" />
-                </div>
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <p className="text-sm">Database Usage</p>
-                    <p className="text-sm font-medium">68%</p>
-                  </div>
-                  <Progress value={68} className="h-2" />
-                </div>
-                <div>
-                  <div className="flex justify-between mb-1">
-                    <p className="text-sm">API Requests</p>
-                    <p className="text-sm font-medium">85%</p>
-                  </div>
-                  <Progress value={85} className="h-2" />
-                </div>
-                <div className="pt-2 border-t">
-                  <div className="flex justify-between items-center">
+          {/* Main Content */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Restaurant Status */}
+              <Card className="border-none shadow-md">
+                <CardHeader className="pb-2">
+                  <CardTitle>Restaurant Status</CardTitle>
+                  <CardDescription>Overview of restaurant verification status</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
                     <div>
-                      <p className="text-sm font-medium">System Status</p>
-                      <p className="text-xs text-gray-500">Last checked: 5 mins ago</p>
+                      <div className="flex justify-between mb-1">
+                        <p className="text-sm">Verified Restaurants</p>
+                        <p className="text-sm font-medium">
+                          {displayStats?.restaurants?.verified || 0} (
+                          {Math.round(
+                            ((displayStats?.restaurants?.verified || 0) / (displayStats?.restaurants?.total || 1)) *
+                            100,
+                          )}
+                          %)
+                        </p>
+                      </div>
+                      <Progress
+                        value={Math.round(
+                          ((displayStats?.restaurants?.verified || 0) / (displayStats?.restaurants?.total || 1)) * 100,
+                        )}
+                        className="h-2"
+                      />
                     </div>
-                    <Badge className="bg-green-100 text-green-700">Operational</Badge>
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <p className="text-sm">Pending Verification</p>
+                        <p className="text-sm font-medium">
+                          {displayStats?.restaurants?.pending || 0} (
+                          {Math.round(
+                            ((displayStats?.restaurants?.pending || 0) / (displayStats?.restaurants?.total || 1)) * 100,
+                          )}
+                          %)
+                        </p>
+                      </div>
+                      <Progress
+                        value={Math.round(
+                          ((displayStats?.restaurants?.pending || 0) / (displayStats?.restaurants?.total || 1)) * 100,
+                        )}
+                        className="h-2"
+                      />
+                    </div>
+
+                    <div className="pt-4 grid grid-cols-2 gap-4">
+                      <Button
+                        variant="outline"
+                        className="flex items-center justify-center gap-2"
+                        onClick={() => router.push("/dashboard/admin/restaurants")}
+                      >
+                        <Store className="h-4 w-4" />
+                        View All Restaurants
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="flex items-center justify-center gap-2 text-yellow-600 border-yellow-600 hover:bg-yellow-50"
+                        onClick={() => router.push("/dashboard/admin/restaurants?filter=pending")}
+                      >
+                        <AlertTriangle className="h-4 w-4" />
+                        View Pending Approvals
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </motion.div>
+                </CardContent>
+              </Card>
+
+              {/* Order Statistics */}
+              <Card className="border-none shadow-md">
+                <CardHeader className="pb-2">
+                  <CardTitle>Order Statistics</CardTitle>
+                  <CardDescription>Overview of order status and metrics</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <CheckCircle className="h-5 w-5 text-green-500" />
+                        <span className="font-medium">Completed</span>
+                      </div>
+                      <p className="text-2xl font-bold">{displayStats?.orders?.completed || 0}</p>
+                      <p className="text-sm text-gray-500">
+                        {Math.round(
+                          ((displayStats?.orders?.completed || 0) / (displayStats?.orders?.total || 1)) * 100,
+                        )}
+                        % of total
+                      </p>
+                    </div>
+
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Clock className="h-5 w-5 text-yellow-500" />
+                        <span className="font-medium">Pending</span>
+                      </div>
+                      <p className="text-2xl font-bold">{displayStats?.orders?.pending || 0}</p>
+                      <p className="text-sm text-gray-500">
+                        {Math.round(((displayStats?.orders?.pending || 0) / (displayStats?.orders?.total || 1)) * 100)}%
+                        of total
+                      </p>
+                    </div>
+
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <XCircle className="h-5 w-5 text-red-500" />
+                        <span className="font-medium">Cancelled</span>
+                      </div>
+                      <p className="text-2xl font-bold">{displayStats?.orders?.cancelled || 0}</p>
+                      <p className="text-sm text-gray-500">
+                        {Math.round(
+                          ((displayStats?.orders?.cancelled || 0) / (displayStats?.orders?.total || 1)) * 100,
+                        )}
+                        % of total
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t">
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className="font-medium">Average Order Value</h4>
+                      <p className="text-xl font-bold">${displayStats?.revenue?.averageOrderValue || 0}</p>
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      className="w-full flex items-center justify-center gap-2"
+                      onClick={() => router.push("/dashboard/admin/orders")}
+                    >
+                      <ShoppingBag className="h-4 w-4" />
+                      View All Orders
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Right Column */}
+            <div className="space-y-6">
+              {/* Popular Cuisines */}
+              <Card className="border-none shadow-md">
+                <CardHeader className="pb-2">
+                  <CardTitle>Popular Cuisines</CardTitle>
+                  <CardDescription>Most ordered cuisine types</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {(displayStats?.popular?.cuisines || []).map((cuisine, index) => (
+                      <div key={index} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
+                            <PieChart className="h-4 w-4 text-blue-500" />
+                          </div>
+                          <span>{cuisine.name}</span>
+                        </div>
+                        <span className="font-medium">{cuisine.count} orders</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Top Restaurants */}
+              <Card className="border-none shadow-md">
+                <CardHeader className="pb-2">
+                  <CardTitle>Top Restaurants</CardTitle>
+                  <CardDescription>Highest performing restaurants</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {(displayStats?.popular?.restaurants || []).map((restaurant, index) => (
+                      <div key={index} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="h-8 w-8 bg-orange-100 rounded-full flex items-center justify-center">
+                            <Store className="h-4 w-4 text-orange-500" />
+                          </div>
+                          <span>{restaurant.name}</span>
+                        </div>
+                        <span className="font-medium">{restaurant.orders} orders</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
-

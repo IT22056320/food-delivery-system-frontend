@@ -25,10 +25,23 @@ export default function DeliveryTracker({ delivery, isDeliveryPerson = false, on
                 }
             } catch (error) {
                 console.error("Error fetching delivery location:", error)
+                // Don't set current location to null if fetch fails to prevent UI flickering
             }
         }
 
         fetchLocation()
+
+        // Set up periodic location updates if this is an active delivery
+        let locationInterval = null
+        if (delivery.status === "PICKED_UP" || delivery.status === "IN_TRANSIT") {
+            locationInterval = setInterval(fetchLocation, 15000) // Update every 15 seconds
+        }
+
+        return () => {
+            if (locationInterval) {
+                clearInterval(locationInterval)
+            }
+        }
     }, [delivery])
 
     const handleLocationUpdate = (location) => {

@@ -73,7 +73,38 @@ export default function OrdersPage() {
 
             try {
                 const data = await getRestaurantOrders(selectedRestaurant._id)
-                setOrders(data)
+
+                // Transform orders to a consistent format
+                const normalizedOrders = data.map((order) => {
+                    // Check if this is the new format (with customer_id) or old format (with userId)
+                    if (order.customer_id) {
+                        // New format from order-service
+                        return {
+                            _id: order._id,
+                            userId: order.customer_id,
+                            restaurantId: order.restaurant_id,
+                            items: order.items.map((item) => ({
+                                menuItemId: item.menu_id,
+                                name: item.name || "Menu Item",
+                                price: item.price,
+                                quantity: item.quantity,
+                            })),
+                            totalAmount: order.total_price,
+                            status: order.order_status.toLowerCase(),
+                            deliveryAddress: order.delivery_address,
+                            paymentStatus: order.payment_status.toLowerCase(),
+                            paymentMethod: order.payment_method.toLowerCase(),
+                            specialInstructions: order.extra_notes?.join(", ") || "",
+                            createdAt: order.createdAt,
+                            updatedAt: order.updatedAt,
+                        }
+                    } else {
+                        // Old format from restaurant-service
+                        return order
+                    }
+                })
+
+                setOrders(normalizedOrders)
             } catch (error) {
                 toast.error("Failed to fetch orders")
                 console.error(error)
@@ -118,7 +149,19 @@ export default function OrdersPage() {
             await updateOrderStatus(orderId, newStatus)
 
             // Update local state
-            const updatedOrders = orders.map((order) => (order._id === orderId ? { ...order, status: newStatus } : order))
+            const updatedOrders = orders.map((order) => {
+                if (order._id === orderId) {
+                    // Check if this is the new format or old format
+                    if (order.customer_id) {
+                        // New format
+                        return { ...order, order_status: newStatus.toUpperCase() }
+                    } else {
+                        // Old format
+                        return { ...order, status: newStatus }
+                    }
+                }
+                return order
+            })
 
             setOrders(updatedOrders)
             toast.success(`Order status updated to ${newStatus}`)
@@ -684,4 +727,3 @@ export default function OrdersPage() {
         </div>
     )
 }
-

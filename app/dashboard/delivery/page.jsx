@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useAuth } from "@/hooks/use-auth";
-import { motion } from "framer-motion";
+import { useState, useEffect, useCallback } from "react"
+import { useAuth } from "@/hooks/use-auth"
+import { motion } from "framer-motion"
 import {
   Pizza,
   Home,
@@ -22,22 +22,15 @@ import {
   Package,
   Compass,
   LogOut,
-} from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+} from "lucide-react"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Switch } from "@/components/ui/switch"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import {
   getAvailableDeliveries,
   getMyDeliveries,
@@ -46,32 +39,47 @@ import {
   updateDeliveryStatus,
   updateLocation,
   acceptDelivery,
-} from "@/lib/delivery-api";
-import DeliveryTracker from "@/components/delivery-tracker";
+} from "@/lib/delivery-api"
+import DeliveryTracker from "@/components/delivery-tracker"
 
 export default function DeliveryDashboard() {
-  const { user, loading, logout } = useAuth();
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState("dashboard");
-  const [isLoading, setIsLoading] = useState(true);
-  const [timeFilter, setTimeFilter] = useState("today");
-  const [isAvailable, setIsAvailable] = useState(true);
-  const [selectedDelivery, setSelectedDelivery] = useState(null);
-  const [currentLocation, setCurrentLocation] = useState(null);
+  const { user, loading, logout } = useAuth()
+  const router = useRouter()
+  const [activeTab, setActiveTab] = useState("dashboard")
+  const [isLoading, setIsLoading] = useState(true)
+  const [timeFilter, setTimeFilter] = useState("today")
+  const [isAvailable, setIsAvailable] = useState(true)
+  const [selectedDelivery, setSelectedDelivery] = useState(null)
+  const [currentLocation, setCurrentLocation] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
 
   // State for real data
-  const [activeDeliveries, setActiveDeliveries] = useState([]);
-  const [availableDeliveries, setAvailableDeliveries] = useState([]);
-  const [deliveryHistory, setDeliveryHistory] = useState([]);
+  const [activeDeliveries, setActiveDeliveries] = useState([])
+  const [availableDeliveries, setAvailableDeliveries] = useState([])
+  const [deliveryHistory, setDeliveryHistory] = useState([])
   const [stats, setStats] = useState({
     totalDeliveries: 0,
     totalEarnings: 0,
     avgRating: 0,
-  });
+  })
 
+  // Check authentication and redirect if needed
   useEffect(() => {
-    if (!loading && user?.role !== "delivery_person") {
-      router.push("/");
+    if (!loading) {
+      if (!user) {
+        toast.error("Please log in to access the delivery dashboard")
+        router.push("/login")
+      } else {
+        // Log user info for debugging
+        console.log("Current user:", {
+          id: user.id,
+          name: user.name,
+          role: user.role,
+        })
+
+        // Allow access even if not delivery_person for testing
+        setAuthChecked(true)
+      }
     }
   }, [user, loading, router]);
 
@@ -237,6 +245,240 @@ export default function DeliveryDashboard() {
     }
   };
 
+  // Get current location and set up tracking
+  useEffect(() => {
+    if (!authChecked) return
+
+    const locationWatchId = null
+    let locationUpdateInterval = null
+
+    // Function to update location in the backend
+    const updateLocationToBackend = async (position) => {
+      if (!position || !isAvailable) return
+
+      try {
+        const { latitude, longitude, heading, speed } = position.coords
+        setCurrentLocation({ lat: latitude, lng: longitude })
+
+        await updateLocation(latitude, longitude, isAvailable ? "AVAILABLE" : "OFFLINE", heading, speed)
+      } catch (error) {
+        console.error("Error updating location:", error)
+        // Don't show toast on every error to avoid spamming the user
+      }
+    }
+
+    // Start location tracking
+    if (navigator.geolocation) {
+      // Get initial position
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCurrentLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          })
+
+          // Only update backend if user is available
+          if (isAvailable) {
+            updateLocationToBackend(position)
+          }
+        },
+        (error) => {
+          console.error("Geolocation error:", error)
+          toast.error("Unable to access your location. Please enable location services.")
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
+      )
+
+      // Set up periodic location updates (every 30 seconds)
+      locationUpdateInterval = setInterval(() => {
+        navigator.geolocation.getCurrentPosition(
+          updateLocationToBackend,
+          (error) => console.error("Periodic location update error:", error),
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
+        )
+      }, 30000)
+    } else {
+      toast.error("Geolocation is not supported by this browser.")
+    }
+
+    // Cleanup function
+    return () => {
+      if (locationWatchId) {
+        navigator.geolocation.clearWatch(locationWatchId)
+      }
+      if (locationUpdateInterval) {
+        clearInterval(locationUpdateInterval)
+      }
+    }
+  }, [isAvailable, authChecked])
+
+  // Fetch active deliveries
+  useEffect(() => {
+    if (!authChecked) return
+
+    let isMounted = true
+    let fetchInterval = null
+
+    const fetchData = async () => {
+      if (!isMounted) return
+
+      setIsLoading(true)
+      try {
+        await Promise.all([
+          fetchActiveDeliveries(),
+          isAvailable ? fetchAvailableDeliveries() : Promise.resolve([]),
+          fetchDeliveryHistory(),
+          fetchDeliveryStats(),
+        ])
+      } catch (error) {
+        console.error("Error fetching delivery data:", error)
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    // Initial fetch
+    fetchData()
+
+    // Set up polling for real-time updates (every 30 seconds)
+    fetchInterval = setInterval(fetchData, 30000)
+
+    // Cleanup function
+    return () => {
+      isMounted = false
+      if (fetchInterval) {
+        clearInterval(fetchInterval)
+      }
+    }
+  }, [authChecked, timeFilter, isAvailable])
+
+  const fetchActiveDeliveries = async () => {
+    try {
+      const data = await getMyDeliveries()
+      console.log("Active deliveries fetched:", data)
+      setActiveDeliveries(data)
+      if (data.length > 0 && !selectedDelivery) {
+        setSelectedDelivery(data[0]._id)
+      }
+    } catch (error) {
+      console.error("Error fetching active deliveries:", error)
+      setActiveDeliveries([])
+    }
+  }
+
+  const fetchAvailableDeliveries = async () => {
+    if (!isAvailable) {
+      setAvailableDeliveries([])
+      return
+    }
+
+    try {
+      const data = await getAvailableDeliveries()
+      console.log("Available deliveries fetched:", data)
+      if (data && Array.isArray(data)) {
+        setAvailableDeliveries(data)
+      } else {
+        setAvailableDeliveries([])
+      }
+    } catch (error) {
+      console.error("Error fetching available deliveries:", error)
+      setAvailableDeliveries([])
+    }
+  }
+
+  const fetchDeliveryHistory = async () => {
+    try {
+      const data = await getDeliveryHistory()
+      console.log("Delivery history fetched:", data)
+      setDeliveryHistory(data.deliveries || [])
+    } catch (error) {
+      console.error("Error fetching delivery history:", error)
+      setDeliveryHistory([])
+    }
+  }
+
+  const fetchDeliveryStats = async () => {
+    try {
+      const data = await getDeliveryStats(timeFilter)
+      console.log("Delivery stats fetched:", data)
+      setStats(data)
+    } catch (error) {
+      console.error("Error fetching delivery stats:", error)
+      setStats({
+        totalDeliveries: 0,
+        totalEarnings: 0,
+        avgRating: 0,
+      })
+    }
+  }
+
+  const handleUpdateDeliveryStatus = async (deliveryId, status, notes = "") => {
+    try {
+      await updateDeliveryStatus(deliveryId, status, notes)
+      toast.success(`Delivery status updated to ${status}`)
+      fetchActiveDeliveries()
+    } catch (error) {
+      console.error("Error updating delivery status:", error)
+      toast.error("An error occurred while updating delivery status")
+    }
+  }
+
+  const handleAcceptDelivery = async (deliveryId) => {
+    try {
+      await acceptDelivery(deliveryId)
+      toast.success("Delivery accepted")
+      fetchActiveDeliveries()
+      fetchAvailableDeliveries()
+    } catch (error) {
+      console.error("Error accepting delivery:", error)
+      toast.error("Failed to accept delivery")
+    }
+  }
+
+  const updateAvailability = async (newAvailableStatus) => {
+    try {
+      if (!currentLocation) {
+        toast.error("Unable to update availability without location")
+        return
+      }
+
+      await updateLocation(currentLocation.lat, currentLocation.lng, newAvailableStatus ? "AVAILABLE" : "OFFLINE")
+
+      setIsAvailable(newAvailableStatus)
+      toast.success(newAvailableStatus ? "You are now available for deliveries" : "You are now offline")
+
+      if (newAvailableStatus) {
+        fetchAvailableDeliveries()
+      } else {
+        setAvailableDeliveries([])
+      }
+    } catch (error) {
+      console.error("Error updating availability:", error)
+      toast.error("An error occurred while updating availability")
+    }
+  }
+
+  const handleLocationUpdate = useCallback((newLocation) => {
+    setCurrentLocation(newLocation)
+  }, [])
+
+  const handleLogout = async () => {
+    try {
+      await fetch("http://localhost:5000/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      })
+      logout()
+      router.push("/login")
+      toast.success("Logged out successfully")
+    } catch (error) {
+      console.error("Logout failed:", error)
+      toast.error("Logout failed. Please try again.")
+    }
+  }
+
   if (loading || !user) {
     return <div className="p-6">Loading...</div>;
   }
@@ -254,14 +496,11 @@ export default function DeliveryDashboard() {
   const item = {
     hidden: { y: 20, opacity: 0 },
     show: { y: 0, opacity: 1 },
-  };
+  }
 
   const getSelectedDelivery = () => {
-    return (
-      activeDeliveries.find((delivery) => delivery._id === selectedDelivery) ||
-      null
-    );
-  };
+    return activeDeliveries.find((delivery) => delivery._id === selectedDelivery) || null
+  }
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-amber-50 to-orange-100">
@@ -280,11 +519,10 @@ export default function DeliveryDashboard() {
           <nav className="space-y-1">
             <Button
               variant={activeTab === "dashboard" ? "default" : "ghost"}
-              className={`w-full justify-start ${
-                activeTab === "dashboard"
+              className={`w-full justify-start ${activeTab === "dashboard"
                   ? "bg-orange-500 hover:bg-orange-600"
                   : ""
-              }`}
+                }`}
               onClick={() => setActiveTab("dashboard")}
             >
               <Home className="mr-2 h-5 w-5" />
@@ -293,11 +531,10 @@ export default function DeliveryDashboard() {
 
             <Button
               variant={activeTab === "deliveries" ? "default" : "ghost"}
-              className={`w-full justify-start ${
-                activeTab === "deliveries"
+              className={`w-full justify-start ${activeTab === "deliveries"
                   ? "bg-orange-500 hover:bg-orange-600"
                   : ""
-              }`}
+                }`}
               onClick={() => setActiveTab("deliveries")}
             >
               <Truck className="mr-2 h-5 w-5" />
@@ -306,11 +543,10 @@ export default function DeliveryDashboard() {
 
             <Button
               variant={activeTab === "earnings" ? "default" : "ghost"}
-              className={`w-full justify-start ${
-                activeTab === "earnings"
+              className={`w-full justify-start ${activeTab === "earnings"
                   ? "bg-orange-500 hover:bg-orange-600"
                   : ""
-              }`}
+                }`}
               onClick={() => setActiveTab("earnings")}
             >
               <Wallet className="mr-2 h-5 w-5" />
@@ -319,11 +555,10 @@ export default function DeliveryDashboard() {
 
             <Button
               variant={activeTab === "analytics" ? "default" : "ghost"}
-              className={`w-full justify-start ${
-                activeTab === "analytics"
+              className={`w-full justify-start ${activeTab === "analytics"
                   ? "bg-orange-500 hover:bg-orange-600"
                   : ""
-              }`}
+                }`}
               onClick={() => setActiveTab("analytics")}
             >
               <BarChart3 className="mr-2 h-5 w-5" />
@@ -332,11 +567,10 @@ export default function DeliveryDashboard() {
 
             <Button
               variant={activeTab === "settings" ? "default" : "ghost"}
-              className={`w-full justify-start ${
-                activeTab === "settings"
+              className={`w-full justify-start ${activeTab === "settings"
                   ? "bg-orange-500 hover:bg-orange-600"
                   : ""
-              }`}
+                }`}
               onClick={() => setActiveTab("settings")}
             >
               <Settings className="mr-2 h-5 w-5" />
@@ -369,11 +603,10 @@ export default function DeliveryDashboard() {
                   />
                 </div>
                 <div
-                  className={`w-full p-2 rounded-md text-center text-sm font-medium ${
-                    isAvailable
+                  className={`w-full p-2 rounded-md text-center text-sm font-medium ${isAvailable
                       ? "bg-green-100 text-green-700"
                       : "bg-gray-100 text-gray-700"
-                  }`}
+                    }`}
                 >
                   {isAvailable ? "Online" : "Offline"}
                 </div>
@@ -454,9 +687,7 @@ export default function DeliveryDashboard() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-500 text-sm">Total Deliveries</p>
-                      <h3 className="text-2xl font-bold mt-1">
-                        {stats.totalDeliveries || 0}
-                      </h3>
+                      <h3 className="text-2xl font-bold mt-1">{stats.totalDeliveries || 0}</h3>
                       <p className="text-green-500 text-xs mt-1 flex items-center">
                         <TrendingUp className="h-3 w-3 mr-1" /> +12% from last{" "}
                         {timeFilter}
@@ -474,9 +705,7 @@ export default function DeliveryDashboard() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-500 text-sm">Total Earnings</p>
-                      <h3 className="text-2xl font-bold mt-1">
-                        ${stats.totalEarnings || 0}
-                      </h3>
+                      <h3 className="text-2xl font-bold mt-1">${stats.totalEarnings || 0}</h3>
                       <p className="text-green-500 text-xs mt-1 flex items-center">
                         <TrendingUp className="h-3 w-3 mr-1" /> +8% from last{" "}
                         {timeFilter}
@@ -494,18 +723,12 @@ export default function DeliveryDashboard() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-500 text-sm">Average Rating</p>
-                      <h3 className="text-2xl font-bold mt-1">
-                        {stats.avgRating || 0}
-                      </h3>
+                      <h3 className="text-2xl font-bold mt-1">{stats.avgRating || 0}</h3>
                       <div className="flex items-center mt-1">
                         {[...Array(5)].map((_, i) => (
                           <Star
                             key={i}
-                            className={`h-3 w-3 ${
-                              i < Math.floor(stats.avgRating || 0)
-                                ? "fill-amber-400 text-amber-400"
-                                : "text-gray-300"
-                            }`}
+                            className={`h-3 w-3 ${i < Math.floor(stats.avgRating || 0) ? "fill-amber-400 text-amber-400" : "text-gray-300"}`}
                           />
                         ))}
                       </div>
@@ -524,9 +747,7 @@ export default function DeliveryDashboard() {
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-center">
                     <CardTitle>Available Deliveries</CardTitle>
-                    <Badge className="bg-blue-100 text-blue-700">
-                      {availableDeliveries.length} Available
-                    </Badge>
+                    <Badge className="bg-blue-100 text-blue-700">{availableDeliveries.length} Available</Badge>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -544,29 +765,20 @@ export default function DeliveryDashboard() {
                         </div>
                         <div className="flex-1">
                           <div className="flex justify-between">
-                            <h4 className="font-medium">
-                              Order #{delivery.order_id.substring(0, 6)}
-                            </h4>
-                            <Badge className="bg-blue-100 text-blue-700">
-                              New Order
-                            </Badge>
+                            <h4 className="font-medium">Order #{delivery.order_id.substring(0, 6)}</h4>
+                            <Badge className="bg-blue-100 text-blue-700">New Order</Badge>
                           </div>
                           <p className="text-sm text-gray-600 mt-1">
-                            {delivery.pickup_location?.address ||
-                              "Restaurant Address"}
+                            {delivery.pickup_location?.address || "Restaurant Address"}
                           </p>
                           <div className="flex justify-between mt-1">
                             <div className="flex items-center gap-1 text-xs text-gray-500">
                               <MapPin className="h-3 w-3" />
-                              <span>
-                                {delivery.estimated_delivery_time || "30"} mins
-                              </span>
+                              <span>{delivery.estimated_delivery_time || "30"} mins</span>
                               <span className="mx-1">•</span>
                               <Clock className="h-3 w-3" />
                               <span>
-                                {new Date(
-                                  delivery.createdAt
-                                ).toLocaleTimeString([], {
+                                {new Date(delivery.createdAt).toLocaleTimeString([], {
                                   hour: "2-digit",
                                   minute: "2-digit",
                                 })}
@@ -606,11 +818,7 @@ export default function DeliveryDashboard() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.05 }}
-                        className={`flex items-center gap-4 p-4 rounded-lg bg-white shadow-sm hover:shadow-md transition-all cursor-pointer ${
-                          selectedDelivery === delivery._id
-                            ? "ring-2 ring-orange-500"
-                            : ""
-                        }`}
+                        className={`flex items-center gap-4 p-4 rounded-lg bg-white shadow-sm hover:shadow-md transition-all cursor-pointer ${selectedDelivery === delivery._id ? "ring-2 ring-orange-500" : ""}`}
                         onClick={() => setSelectedDelivery(delivery._id)}
                       >
                         <div className="h-12 w-12 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
@@ -618,38 +826,31 @@ export default function DeliveryDashboard() {
                         </div>
                         <div className="flex-1">
                           <div className="flex justify-between">
-                            <h4 className="font-medium">
-                              Order #{delivery.order_id.substring(0, 6)}
-                            </h4>
+                            <h4 className="font-medium">Order #{delivery.order_id.substring(0, 6)}</h4>
                             <Badge
                               className={
                                 delivery.status === "PICKED_UP"
                                   ? "bg-blue-100 text-blue-700 hover:bg-blue-100"
                                   : delivery.status === "IN_TRANSIT"
-                                  ? "bg-amber-100 text-amber-700 hover:bg-amber-100"
-                                  : "bg-gray-100 text-gray-700 hover:bg-gray-100"
+                                    ? "bg-amber-100 text-amber-700 hover:bg-amber-100"
+                                    : "bg-gray-100 text-gray-700 hover:bg-gray-100"
                               }
                             >
                               {delivery.status.replace(/_/g, " ")}
                             </Badge>
                           </div>
                           <p className="text-sm text-gray-600 mt-1">
-                            {delivery.pickup_location?.address ||
-                              "Restaurant Address"}
+                            {delivery.pickup_location?.address || "Restaurant Address"}
                           </p>
                           <div className="flex justify-between mt-1">
                             <div className="flex items-center gap-1 text-xs text-gray-500">
                               <MapPin className="h-3 w-3" />
-                              <span>
-                                {delivery.estimated_delivery_time || "30"} mins
-                              </span>
+                              <span>{delivery.estimated_delivery_time || "30"} mins</span>
                               <span className="mx-1">•</span>
                               <Clock className="h-3 w-3" />
                               <span>
                                 Est.{" "}
-                                {new Date(
-                                  delivery.createdAt
-                                ).toLocaleTimeString([], {
+                                {new Date(delivery.createdAt).toLocaleTimeString([], {
                                   hour: "2-digit",
                                   minute: "2-digit",
                                 })}
@@ -738,15 +939,11 @@ export default function DeliveryDashboard() {
                 <div className="pt-2 border-t">
                   <div className="flex justify-between items-center">
                     <p className="text-sm font-medium">Base Pay</p>
-                    <p className="text-sm font-medium">
-                      ${Math.round((stats.totalEarnings || 0) * 0.7)}
-                    </p>
+                    <p className="text-sm font-medium">${Math.round((stats.totalEarnings || 0) * 0.7)}</p>
                   </div>
                   <div className="flex justify-between items-center mt-2">
                     <p className="text-sm font-medium">Tips</p>
-                    <p className="text-sm font-medium">
-                      ${Math.round((stats.totalEarnings || 0) * 0.3)}
-                    </p>
+                    <p className="text-sm font-medium">${Math.round((stats.totalEarnings || 0) * 0.3)}</p>
                   </div>
                   <div className="flex justify-between items-center mt-2">
                     <p className="text-sm font-medium">Bonuses</p>
@@ -787,43 +984,25 @@ export default function DeliveryDashboard() {
                     >
                       <div className="flex justify-between items-start mb-2">
                         <div>
-                          <h4 className="font-medium">
-                            Order #
-                            {delivery.order_id?.substring(0, 6) || "Unknown"}
-                          </h4>
+                          <h4 className="font-medium">Order #{delivery.order_id?.substring(0, 6) || "Unknown"}</h4>
                           <p className="text-xs text-gray-500">
-                            {new Date(
-                              delivery.delivered_at || delivery.createdAt
-                            ).toLocaleString()}
+                            {new Date(delivery.delivered_at || delivery.createdAt).toLocaleString()}
                           </p>
                         </div>
-                        <Badge className="bg-green-100 text-green-700">
-                          DELIVERED
-                        </Badge>
+                        <Badge className="bg-green-100 text-green-700">DELIVERED</Badge>
                       </div>
                       <div className="flex justify-between items-center text-sm">
-                        <span>
-                          {delivery.restaurant_contact?.name || "Restaurant"}
-                        </span>
-                        <span className="font-medium">
-                          ${(delivery.order?.total_price || 0).toFixed(2)}
-                        </span>
+                        <span>{delivery.restaurant_contact?.name || "Restaurant"}</span>
+                        <span className="font-medium">${(delivery.order?.total_price || 0).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between mt-2">
                         <div className="flex items-center gap-1 text-xs text-gray-500">
                           <MapPin className="h-3 w-3" />
-                          <span>
-                            {delivery.actual_delivery_time || "30"} mins
-                          </span>
+                          <span>{delivery.actual_delivery_time || "30"} mins</span>
                         </div>
                         <div className="flex items-center gap-1 text-xs font-medium text-green-600">
                           <DollarSign className="h-3 w-3" />
-                          <span>
-                            $
-                            {(
-                              (delivery.order?.total_price || 0) * 0.15
-                            ).toFixed(2)}
-                          </span>
+                          <span>${((delivery.order?.total_price || 0) * 0.15).toFixed(2)}</span>
                         </div>
                       </div>
                     </motion.div>
