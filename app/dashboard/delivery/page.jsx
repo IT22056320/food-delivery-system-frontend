@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useAuth } from "@/hooks/use-auth"
-import { motion } from "framer-motion"
+import { useState, useEffect, useCallback } from "react";
+import { useAuth } from "@/hooks/use-auth";
+import { motion } from "framer-motion";
 import {
   Pizza,
   Home,
@@ -15,165 +15,230 @@ import {
   Truck,
   DollarSign,
   Star,
-  Navigation,
-  CheckCircle,
-  PhoneCall,
   MessageSquare,
-  Calendar,
   BarChart3,
   Wallet,
   AlertCircle,
   Package,
   Compass,
   LogOut,
-} from "lucide-react"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Switch } from "@/components/ui/switch"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
-
-// Sample data for the delivery dashboard
-const activeDeliveries = [
-  {
-    id: "ORD-7291",
-    customer: "John Doe",
-    customerAddress: "123 Main St, Apt 4B, New York, NY 10001",
-    customerPhone: "+1 (555) 123-4567",
-    restaurant: "Burger Palace",
-    restaurantAddress: "85 Broadway, New York, NY 10003",
-    items: ["Cheeseburger", "Fries", "Coke"],
-    total: 24.99,
-    status: "Picked up",
-    estimatedDelivery: "10 mins",
-    distance: "1.2 miles",
-    paymentMethod: "Card",
-    specialInstructions: "Leave at door. Ring doorbell.",
-    image: "/placeholder.svg?height=60&width=60",
-  },
-  {
-    id: "ORD-6432",
-    customer: "Sarah Smith",
-    customerAddress: "456 Park Ave, New York, NY 10022",
-    customerPhone: "+1 (555) 987-6543",
-    restaurant: "Pizza Heaven",
-    restaurantAddress: "120 5th Ave, New York, NY 10011",
-    items: ["Margherita Pizza", "Garlic Bread"],
-    total: 18.5,
-    status: "On the way",
-    estimatedDelivery: "15 mins",
-    distance: "2.5 miles",
-    paymentMethod: "Cash",
-    specialInstructions: "Call when arriving.",
-    image: "/placeholder.svg?height=60&width=60",
-  },
-]
-
-const deliveryHistory = [
-  {
-    id: "ORD-5128",
-    customer: "Mike Johnson",
-    restaurant: "Taco Fiesta",
-    total: 32.75,
-    status: "Delivered",
-    time: "Today, 2:30 PM",
-    earnings: 8.5,
-    tip: 5.0,
-    distance: "3.2 miles",
-    duration: "28 mins",
-    rating: 5,
-  },
-  {
-    id: "ORD-4982",
-    customer: "Emily Davis",
-    restaurant: "Sushi World",
-    total: 45.2,
-    status: "Delivered",
-    time: "Today, 1:15 PM",
-    earnings: 9.25,
-    tip: 7.5,
-    distance: "4.5 miles",
-    duration: "35 mins",
-    rating: 5,
-  },
-  {
-    id: "ORD-4879",
-    customer: "Robert Wilson",
-    restaurant: "Green Eats",
-    total: 16.8,
-    status: "Delivered",
-    time: "Today, 11:45 AM",
-    earnings: 6.75,
-    tip: 3.0,
-    distance: "1.8 miles",
-    duration: "22 mins",
-    rating: 4,
-  },
-  {
-    id: "ORD-4756",
-    customer: "Lisa Brown",
-    restaurant: "Burger Palace",
-    total: 28.5,
-    status: "Delivered",
-    time: "Yesterday, 7:30 PM",
-    earnings: 7.5,
-    tip: 4.5,
-    distance: "2.7 miles",
-    duration: "25 mins",
-    rating: 5,
-  },
-  {
-    id: "ORD-4698",
-    customer: "David Miller",
-    restaurant: "Pizza Heaven",
-    total: 22.75,
-    status: "Delivered",
-    time: "Yesterday, 6:15 PM",
-    earnings: 7.0,
-    tip: 4.0,
-    distance: "2.3 miles",
-    duration: "20 mins",
-    rating: 4,
-  },
-]
-
-const weeklyData = [
-  { day: "Mon", deliveries: 8, earnings: 85 },
-  { day: "Tue", deliveries: 6, earnings: 72 },
-  { day: "Wed", deliveries: 10, earnings: 110 },
-  { day: "Thu", deliveries: 7, earnings: 98 },
-  { day: "Fri", deliveries: 12, earnings: 145 },
-  { day: "Sat", deliveries: 14, earnings: 168 },
-  { day: "Sun", deliveries: 9, earnings: 132 },
-]
+} from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import {
+  getAvailableDeliveries,
+  getMyDeliveries,
+  getDeliveryHistory,
+  getDeliveryStats,
+  updateDeliveryStatus,
+  updateLocation,
+  acceptDelivery,
+} from "@/lib/delivery-api";
+import DeliveryTracker from "@/components/delivery-tracker";
 
 export default function DeliveryDashboard() {
-  const { user, loading, logout } = useAuth()
-  const router = useRouter()
-  const [activeTab, setActiveTab] = useState("dashboard")
-  const [isLoading, setIsLoading] = useState(true)
-  const [timeFilter, setTimeFilter] = useState("today")
-  const [isAvailable, setIsAvailable] = useState(true)
-  const [selectedDelivery, setSelectedDelivery] = useState(activeDeliveries[0]?.id || null)
+  const { user, loading, logout } = useAuth();
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [isLoading, setIsLoading] = useState(true);
+  const [timeFilter, setTimeFilter] = useState("today");
+  const [isAvailable, setIsAvailable] = useState(true);
+  const [selectedDelivery, setSelectedDelivery] = useState(null);
+  const [currentLocation, setCurrentLocation] = useState(null);
+
+  // State for real data
+  const [activeDeliveries, setActiveDeliveries] = useState([]);
+  const [availableDeliveries, setAvailableDeliveries] = useState([]);
+  const [deliveryHistory, setDeliveryHistory] = useState([]);
+  const [stats, setStats] = useState({
+    totalDeliveries: 0,
+    totalEarnings: 0,
+    avgRating: 0,
+  });
 
   useEffect(() => {
     if (!loading && user?.role !== "delivery_person") {
-      router.push("/")
+      router.push("/");
     }
-  }, [user, loading, router])
+  }, [user, loading, router]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setIsLoading(false)
-    }, 1000)
-    return () => clearTimeout(timer)
-  }, [])
+      setIsLoading(false);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Get current location
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude, heading, speed } = position.coords;
+          setCurrentLocation({ lat: latitude, lng: longitude });
+
+          // Update location in backend if user is available
+          if (isAvailable) {
+            updateLocation(
+              latitude,
+              longitude,
+              "AVAILABLE",
+              heading,
+              speed
+            ).catch((error) =>
+              console.error("Error updating location:", error)
+            );
+          }
+        },
+        (error) => {
+          console.error("Geolocation error:", error);
+          toast.error(
+            "Unable to access your location. Please enable location services."
+          );
+        }
+      );
+    } else {
+      toast.error("Geolocation is not supported by this browser.");
+    }
+  }, [isAvailable]);
+
+  // Fetch active deliveries
+  useEffect(() => {
+    if (!loading && user) {
+      fetchActiveDeliveries();
+      fetchAvailableDeliveries();
+      fetchDeliveryHistory();
+      fetchDeliveryStats();
+    }
+  }, [loading, user, timeFilter]);
+
+  const fetchActiveDeliveries = async () => {
+    try {
+      const data = await getMyDeliveries();
+      setActiveDeliveries(data);
+      if (data.length > 0 && !selectedDelivery) {
+        setSelectedDelivery(data[0]._id);
+      }
+    } catch (error) {
+      console.error("Error fetching active deliveries:", error);
+    }
+  };
+
+  const fetchAvailableDeliveries = async () => {
+    if (!isAvailable) return;
+
+    try {
+      const data = await getAvailableDeliveries();
+      setAvailableDeliveries(data);
+    } catch (error) {
+      console.error("Error fetching available deliveries:", error);
+    }
+  };
+
+  const fetchDeliveryHistory = async () => {
+    try {
+      const data = await getDeliveryHistory();
+      setDeliveryHistory(data.deliveries);
+    } catch (error) {
+      console.error("Error fetching delivery history:", error);
+    }
+  };
+
+  const fetchDeliveryStats = async () => {
+    try {
+      const data = await getDeliveryStats(timeFilter);
+      setStats(data);
+    } catch (error) {
+      console.error("Error fetching delivery stats:", error);
+    }
+  };
+
+  const handleUpdateDeliveryStatus = async (deliveryId, status, notes = "") => {
+    try {
+      await updateDeliveryStatus(deliveryId, status, notes);
+      toast.success(`Delivery status updated to ${status}`);
+      fetchActiveDeliveries();
+    } catch (error) {
+      console.error("Error updating delivery status:", error);
+      toast.error("An error occurred while updating delivery status");
+    }
+  };
+
+  const handleAcceptDelivery = async (deliveryId) => {
+    try {
+      await acceptDelivery(deliveryId);
+      toast.success("Delivery accepted");
+      fetchActiveDeliveries();
+      fetchAvailableDeliveries();
+    } catch (error) {
+      console.error("Error accepting delivery:", error);
+      toast.error("Failed to accept delivery");
+    }
+  };
+
+  const updateAvailability = async (isAvailable) => {
+    try {
+      if (!currentLocation) {
+        toast.error("Unable to update availability without location");
+        return;
+      }
+
+      await updateLocation(
+        currentLocation.lat,
+        currentLocation.lng,
+        isAvailable ? "AVAILABLE" : "OFFLINE"
+      );
+
+      setIsAvailable(isAvailable);
+      toast.success(
+        isAvailable
+          ? "You are now available for deliveries"
+          : "You are now offline"
+      );
+
+      if (isAvailable) {
+        fetchAvailableDeliveries();
+      }
+    } catch (error) {
+      console.error("Error updating availability:", error);
+      toast.error("An error occurred while updating availability");
+    }
+  };
+
+  const handleLocationUpdate = useCallback((newLocation) => {
+    setCurrentLocation(newLocation);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch("http://localhost:5000/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+      logout();
+      router.push("/login");
+      toast.success("Logged out successfully");
+    } catch (error) {
+      console.error("Logout failed:", error);
+      toast.error("Logout failed. Please try again.");
+    }
+  };
 
   if (loading || !user) {
-    return <div className="p-6">Loading...</div>
+    return <div className="p-6">Loading...</div>;
   }
 
   const container = {
@@ -184,44 +249,19 @@ export default function DeliveryDashboard() {
         staggerChildren: 0.1,
       },
     },
-  }
+  };
 
   const item = {
     hidden: { y: 20, opacity: 0 },
     show: { y: 0, opacity: 1 },
-  }
-
-  // Calculate total deliveries and earnings for the selected time period
-  const getTotalDeliveries = () => {
-    return timeFilter === "today" ? 5 : timeFilter === "week" ? 38 : 142
-  }
-
-  const getTotalEarnings = () => {
-    return timeFilter === "today" ? 85 : timeFilter === "week" ? 520 : 1850
-  }
-
-  const getAverageRating = () => {
-    return 4.8
-  }
+  };
 
   const getSelectedDelivery = () => {
-    return activeDeliveries.find((delivery) => delivery.id === selectedDelivery) || activeDeliveries[0]
-  }
-
-  const handleLogout = async () => {
-    try {
-      await fetch("http://localhost:5000/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      })
-      logout()
-      router.push("/login")
-      toast.success("Logged out successfully")
-    } catch (error) {
-      console.error("Logout failed:", error)
-      toast.error("Logout failed. Please try again.")
-    }
-  }
+    return (
+      activeDeliveries.find((delivery) => delivery._id === selectedDelivery) ||
+      null
+    );
+  };
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-amber-50 to-orange-100">
@@ -240,7 +280,11 @@ export default function DeliveryDashboard() {
           <nav className="space-y-1">
             <Button
               variant={activeTab === "dashboard" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "dashboard" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+              className={`w-full justify-start ${
+                activeTab === "dashboard"
+                  ? "bg-orange-500 hover:bg-orange-600"
+                  : ""
+              }`}
               onClick={() => setActiveTab("dashboard")}
             >
               <Home className="mr-2 h-5 w-5" />
@@ -249,7 +293,11 @@ export default function DeliveryDashboard() {
 
             <Button
               variant={activeTab === "deliveries" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "deliveries" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+              className={`w-full justify-start ${
+                activeTab === "deliveries"
+                  ? "bg-orange-500 hover:bg-orange-600"
+                  : ""
+              }`}
               onClick={() => setActiveTab("deliveries")}
             >
               <Truck className="mr-2 h-5 w-5" />
@@ -258,7 +306,11 @@ export default function DeliveryDashboard() {
 
             <Button
               variant={activeTab === "earnings" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "earnings" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+              className={`w-full justify-start ${
+                activeTab === "earnings"
+                  ? "bg-orange-500 hover:bg-orange-600"
+                  : ""
+              }`}
               onClick={() => setActiveTab("earnings")}
             >
               <Wallet className="mr-2 h-5 w-5" />
@@ -267,7 +319,11 @@ export default function DeliveryDashboard() {
 
             <Button
               variant={activeTab === "analytics" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "analytics" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+              className={`w-full justify-start ${
+                activeTab === "analytics"
+                  ? "bg-orange-500 hover:bg-orange-600"
+                  : ""
+              }`}
               onClick={() => setActiveTab("analytics")}
             >
               <BarChart3 className="mr-2 h-5 w-5" />
@@ -276,7 +332,11 @@ export default function DeliveryDashboard() {
 
             <Button
               variant={activeTab === "settings" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "settings" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+              className={`w-full justify-start ${
+                activeTab === "settings"
+                  ? "bg-orange-500 hover:bg-orange-600"
+                  : ""
+              }`}
               onClick={() => setActiveTab("settings")}
             >
               <Settings className="mr-2 h-5 w-5" />
@@ -299,15 +359,21 @@ export default function DeliveryDashboard() {
             <CardContent className="p-4">
               <div className="flex flex-col items-center gap-2">
                 <div className="flex items-center justify-between w-full mb-2">
-                  <span className="text-sm font-medium">Available for Deliveries</span>
+                  <span className="text-sm font-medium">
+                    Available for Deliveries
+                  </span>
                   <Switch
                     checked={isAvailable}
-                    onCheckedChange={setIsAvailable}
+                    onCheckedChange={(checked) => updateAvailability(checked)}
                     className="data-[state=checked]:bg-orange-500"
                   />
                 </div>
                 <div
-                  className={`w-full p-2 rounded-md text-center text-sm font-medium ${isAvailable ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}
+                  className={`w-full p-2 rounded-md text-center text-sm font-medium ${
+                    isAvailable
+                      ? "bg-green-100 text-green-700"
+                      : "bg-gray-100 text-gray-700"
+                  }`}
                 >
                   {isAvailable ? "Online" : "Offline"}
                 </div>
@@ -335,7 +401,9 @@ export default function DeliveryDashboard() {
                 </motion.span>
               )}
             </h1>
-            <p className="text-gray-500">Welcome back, {user?.name || "Driver"}</p>
+            <p className="text-gray-500">
+              Welcome back, {user?.name || "Driver"}
+            </p>
           </div>
 
           <div className="flex items-center gap-4">
@@ -348,14 +416,20 @@ export default function DeliveryDashboard() {
 
             <Avatar>
               <AvatarImage src="/placeholder.svg?height=40&width=40" />
-              <AvatarFallback className="bg-orange-200 text-orange-700">{user?.name?.charAt(0) || "D"}</AvatarFallback>
+              <AvatarFallback className="bg-orange-200 text-orange-700">
+                {user?.name?.charAt(0) || "D"}
+              </AvatarFallback>
             </Avatar>
           </div>
         </header>
 
         {/* Time Period Filter */}
         <div className="mb-6">
-          <Tabs defaultValue="today" value={timeFilter} onValueChange={setTimeFilter}>
+          <Tabs
+            defaultValue="today"
+            value={timeFilter}
+            onValueChange={setTimeFilter}
+          >
             <TabsList>
               <TabsTrigger value="today">Today</TabsTrigger>
               <TabsTrigger value="week">This Week</TabsTrigger>
@@ -380,9 +454,12 @@ export default function DeliveryDashboard() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-500 text-sm">Total Deliveries</p>
-                      <h3 className="text-2xl font-bold mt-1">{getTotalDeliveries()}</h3>
+                      <h3 className="text-2xl font-bold mt-1">
+                        {stats.totalDeliveries || 0}
+                      </h3>
                       <p className="text-green-500 text-xs mt-1 flex items-center">
-                        <TrendingUp className="h-3 w-3 mr-1" /> +12% from last {timeFilter}
+                        <TrendingUp className="h-3 w-3 mr-1" /> +12% from last{" "}
+                        {timeFilter}
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-orange-100 rounded-full flex items-center justify-center">
@@ -397,9 +474,12 @@ export default function DeliveryDashboard() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-500 text-sm">Total Earnings</p>
-                      <h3 className="text-2xl font-bold mt-1">${getTotalEarnings()}</h3>
+                      <h3 className="text-2xl font-bold mt-1">
+                        ${stats.totalEarnings || 0}
+                      </h3>
                       <p className="text-green-500 text-xs mt-1 flex items-center">
-                        <TrendingUp className="h-3 w-3 mr-1" /> +8% from last {timeFilter}
+                        <TrendingUp className="h-3 w-3 mr-1" /> +8% from last{" "}
+                        {timeFilter}
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
@@ -414,12 +494,18 @@ export default function DeliveryDashboard() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-500 text-sm">Average Rating</p>
-                      <h3 className="text-2xl font-bold mt-1">{getAverageRating()}</h3>
+                      <h3 className="text-2xl font-bold mt-1">
+                        {stats.avgRating || 0}
+                      </h3>
                       <div className="flex items-center mt-1">
                         {[...Array(5)].map((_, i) => (
                           <Star
                             key={i}
-                            className={`h-3 w-3 ${i < Math.floor(getAverageRating()) ? "fill-amber-400 text-amber-400" : "text-gray-300"}`}
+                            className={`h-3 w-3 ${
+                              i < Math.floor(stats.avgRating || 0)
+                                ? "fill-amber-400 text-amber-400"
+                                : "text-gray-300"
+                            }`}
                           />
                         ))}
                       </div>
@@ -432,12 +518,83 @@ export default function DeliveryDashboard() {
               </Card>
             </div>
 
+            {/* Available Deliveries */}
+            {isAvailable && availableDeliveries.length > 0 && (
+              <Card className="border-none shadow-md">
+                <CardHeader className="pb-2">
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Available Deliveries</CardTitle>
+                    <Badge className="bg-blue-100 text-blue-700">
+                      {availableDeliveries.length} Available
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {availableDeliveries.map((delivery, index) => (
+                      <motion.div
+                        key={delivery._id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        className="flex items-center gap-4 p-4 rounded-lg bg-white shadow-sm hover:shadow-md transition-all cursor-pointer"
+                      >
+                        <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                          <Package className="h-6 w-6 text-blue-500" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex justify-between">
+                            <h4 className="font-medium">
+                              Order #{delivery.order_id.substring(0, 6)}
+                            </h4>
+                            <Badge className="bg-blue-100 text-blue-700">
+                              New Order
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {delivery.pickup_location?.address ||
+                              "Restaurant Address"}
+                          </p>
+                          <div className="flex justify-between mt-1">
+                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                              <MapPin className="h-3 w-3" />
+                              <span>
+                                {delivery.estimated_delivery_time || "30"} mins
+                              </span>
+                              <span className="mx-1">•</span>
+                              <Clock className="h-3 w-3" />
+                              <span>
+                                {new Date(
+                                  delivery.createdAt
+                                ).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <Button
+                          className="flex-shrink-0 bg-blue-500 hover:bg-blue-600"
+                          onClick={() => handleAcceptDelivery(delivery._id)}
+                        >
+                          Accept
+                        </Button>
+                      </motion.div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Active Deliveries */}
             <Card className="border-none shadow-md">
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-center">
                   <CardTitle>Active Deliveries</CardTitle>
-                  <Badge className="bg-green-100 text-green-700">{activeDeliveries.length} Active</Badge>
+                  <Badge className="bg-green-100 text-green-700">
+                    {activeDeliveries.length} Active
+                  </Badge>
                 </div>
               </CardHeader>
               <CardContent>
@@ -445,42 +602,66 @@ export default function DeliveryDashboard() {
                   <div className="space-y-4">
                     {activeDeliveries.map((delivery, index) => (
                       <motion.div
-                        key={delivery.id}
+                        key={delivery._id}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: index * 0.05 }}
-                        className={`flex items-center gap-4 p-4 rounded-lg bg-white shadow-sm hover:shadow-md transition-all cursor-pointer ${selectedDelivery === delivery.id ? "ring-2 ring-orange-500" : ""}`}
-                        onClick={() => setSelectedDelivery(delivery.id)}
+                        className={`flex items-center gap-4 p-4 rounded-lg bg-white shadow-sm hover:shadow-md transition-all cursor-pointer ${
+                          selectedDelivery === delivery._id
+                            ? "ring-2 ring-orange-500"
+                            : ""
+                        }`}
+                        onClick={() => setSelectedDelivery(delivery._id)}
                       >
                         <div className="h-12 w-12 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
                           <Package className="h-6 w-6 text-orange-500" />
                         </div>
                         <div className="flex-1">
                           <div className="flex justify-between">
-                            <h4 className="font-medium">{delivery.id}</h4>
+                            <h4 className="font-medium">
+                              Order #{delivery.order_id.substring(0, 6)}
+                            </h4>
                             <Badge
                               className={
-                                delivery.status === "Picked up"
+                                delivery.status === "PICKED_UP"
                                   ? "bg-blue-100 text-blue-700 hover:bg-blue-100"
-                                  : "bg-amber-100 text-amber-700 hover:bg-amber-100"
+                                  : delivery.status === "IN_TRANSIT"
+                                  ? "bg-amber-100 text-amber-700 hover:bg-amber-100"
+                                  : "bg-gray-100 text-gray-700 hover:bg-gray-100"
                               }
                             >
-                              {delivery.status}
+                              {delivery.status.replace(/_/g, " ")}
                             </Badge>
                           </div>
-                          <p className="text-sm text-gray-600 mt-1">{delivery.restaurant}</p>
+                          <p className="text-sm text-gray-600 mt-1">
+                            {delivery.pickup_location?.address ||
+                              "Restaurant Address"}
+                          </p>
                           <div className="flex justify-between mt-1">
                             <div className="flex items-center gap-1 text-xs text-gray-500">
                               <MapPin className="h-3 w-3" />
-                              <span>{delivery.distance}</span>
+                              <span>
+                                {delivery.estimated_delivery_time || "30"} mins
+                              </span>
                               <span className="mx-1">•</span>
                               <Clock className="h-3 w-3" />
-                              <span>Est. {delivery.estimatedDelivery}</span>
+                              <span>
+                                Est.{" "}
+                                {new Date(
+                                  delivery.createdAt
+                                ).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
                             </div>
-                            <p className="text-sm font-medium">${delivery.total.toFixed(2)}</p>
                           </div>
                         </div>
-                        <Button variant="outline" size="sm" className="flex-shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-shrink-0"
+                        >
                           Navigate
                         </Button>
                       </motion.div>
@@ -491,219 +672,35 @@ export default function DeliveryDashboard() {
                     <div className="h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                       <Truck className="h-8 w-8 text-gray-400" />
                     </div>
-                    <h3 className="text-lg font-medium text-gray-700 mb-1">No Active Deliveries</h3>
+                    <h3 className="text-lg font-medium text-gray-700 mb-1">
+                      No Active Deliveries
+                    </h3>
                     <p className="text-sm text-gray-500 text-center max-w-md">
-                      You don't have any active deliveries at the moment. New delivery requests will appear here.
+                      You don't have any active deliveries at the moment. New
+                      delivery requests will appear here.
                     </p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-
-            {/* Selected Delivery Details */}
-            {selectedDelivery && (
-              <Card className="border-none shadow-md">
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-center">
-                    <CardTitle>Delivery Details</CardTitle>
-                    <Badge
-                      className={
-                        getSelectedDelivery().status === "Picked up"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-amber-100 text-amber-700"
-                      }
-                    >
-                      {getSelectedDelivery().status}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    {/* Progress Tracker */}
-                    <div className="relative pt-4">
-                      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gray-200 ml-3"></div>
-                      <div className="space-y-8 relative">
-                        <div className="flex items-start">
-                          <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center z-10">
-                            <CheckCircle className="h-4 w-4 text-white" />
-                          </div>
-                          <div className="ml-4">
-                            <h4 className="text-sm font-medium">Order Accepted</h4>
-                            <p className="text-xs text-gray-500">Today, 2:30 PM</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start">
-                          <div className="h-6 w-6 rounded-full bg-green-500 flex items-center justify-center z-10">
-                            <CheckCircle className="h-4 w-4 text-white" />
-                          </div>
-                          <div className="ml-4">
-                            <h4 className="text-sm font-medium">Arrived at Restaurant</h4>
-                            <p className="text-xs text-gray-500">Today, 2:45 PM</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start">
-                          <div
-                            className={`h-6 w-6 rounded-full ${getSelectedDelivery().status === "Picked up" ? "bg-green-500" : "bg-gray-300"} flex items-center justify-center z-10`}
-                          >
-                            {getSelectedDelivery().status === "Picked up" ? (
-                              <CheckCircle className="h-4 w-4 text-white" />
-                            ) : (
-                              <Clock className="h-4 w-4 text-white" />
-                            )}
-                          </div>
-                          <div className="ml-4">
-                            <h4 className="text-sm font-medium">Order Picked Up</h4>
-                            <p className="text-xs text-gray-500">
-                              {getSelectedDelivery().status === "Picked up" ? "Today, 2:55 PM" : "Pending"}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-start">
-                          <div className="h-6 w-6 rounded-full bg-gray-300 flex items-center justify-center z-10">
-                            <Clock className="h-4 w-4 text-white" />
-                          </div>
-                          <div className="ml-4">
-                            <h4 className="text-sm font-medium">Delivered to Customer</h4>
-                            <p className="text-xs text-gray-500">Pending</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Delivery Information */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-4">
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-500 mb-1">Restaurant</h4>
-                          <div className="flex items-center gap-2">
-                            <div className="h-10 w-10 rounded-md overflow-hidden bg-gray-100">
-                              <img
-                                src={getSelectedDelivery().image || "/placeholder.svg"}
-                                alt={getSelectedDelivery().restaurant}
-                                className="h-full w-full object-cover"
-                              />
-                            </div>
-                            <div>
-                              <p className="font-medium">{getSelectedDelivery().restaurant}</p>
-                              <p className="text-xs text-gray-500">{getSelectedDelivery().restaurantAddress}</p>
-                            </div>
-                          </div>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-500 mb-1">Order Items</h4>
-                          <ul className="text-sm space-y-1">
-                            {getSelectedDelivery().items.map((item, index) => (
-                              <li key={index} className="flex items-center gap-2">
-                                <div className="h-2 w-2 rounded-full bg-orange-500"></div>
-                                <span>{item}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-500 mb-1">Payment</h4>
-                          <p className="text-sm">{getSelectedDelivery().paymentMethod}</p>
-                          <p className="text-sm font-medium">${getSelectedDelivery().total.toFixed(2)}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-4">
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-500 mb-1">Customer</h4>
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-10 w-10">
-                              <AvatarFallback className="bg-blue-200 text-blue-700">
-                                {getSelectedDelivery().customer.charAt(0)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium">{getSelectedDelivery().customer}</p>
-                              <p className="text-xs text-gray-500">{getSelectedDelivery().customerPhone}</p>
-                            </div>
-                          </div>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-500 mb-1">Delivery Address</h4>
-                          <p className="text-sm">{getSelectedDelivery().customerAddress}</p>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-500 mb-1">Special Instructions</h4>
-                          <p className="text-sm">{getSelectedDelivery().specialInstructions}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-3 pt-2">
-                      <Button className="flex-1 bg-orange-500 hover:bg-orange-600">
-                        {getSelectedDelivery().status === "Picked up" ? "Mark as Delivered" : "Mark as Picked Up"}
-                      </Button>
-                      <Button variant="outline" className="flex items-center gap-2">
-                        <PhoneCall className="h-4 w-4" /> Call Customer
-                      </Button>
-                      <Button variant="outline" className="flex items-center gap-2">
-                        <Navigation className="h-4 w-4" /> Navigate
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Weekly Performance Chart */}
-            <Card className="border-none shadow-md">
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-center">
-                  <CardTitle>Weekly Performance</CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-orange-500 hover:text-orange-600 hover:bg-orange-50 flex items-center gap-1"
-                  >
-                    Download Report <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px] w-full">
-                  <div className="flex h-full items-end gap-2">
-                    {weeklyData.map((day, index) => (
-                      <div key={index} className="flex-1 flex flex-col items-center gap-2">
-                        <div className="w-full flex flex-col items-center gap-1">
-                          <div
-                            className="w-full bg-orange-500 rounded-t-sm"
-                            style={{ height: `${(day.deliveries / 15) * 200}px` }}
-                          ></div>
-                          <div
-                            className="w-full bg-blue-500 rounded-t-sm"
-                            style={{ height: `${(day.earnings / 180) * 200}px` }}
-                          ></div>
-                        </div>
-                        <span className="text-xs font-medium">{day.day}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex justify-center gap-6 mt-4">
-                  <div className="flex items-center gap-2">
-                    <div className="h-3 w-3 bg-orange-500 rounded-sm"></div>
-                    <span className="text-sm text-gray-600">Deliveries</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="h-3 w-3 bg-blue-500 rounded-sm"></div>
-                    <span className="text-sm text-gray-600">Earnings ($)</span>
-                  </div>
-                </div>
               </CardContent>
             </Card>
           </motion.div>
 
           {/* Right Column */}
           <motion.div variants={item} className="w-[350px] space-y-6">
+            {/* Delivery Tracker */}
+            <DeliveryTracker
+              delivery={getSelectedDelivery()}
+              isDeliveryPerson={true}
+              onStatusUpdate={() => fetchActiveDeliveries()}
+            />
+
             {/* Quick Actions */}
             <Card className="border-none shadow-md bg-orange-500 text-white">
               <CardHeader className="pb-2">
                 <CardTitle>Quick Actions</CardTitle>
-                <CardDescription className="text-orange-100">Manage your deliveries</CardDescription>
+                <CardDescription className="text-orange-100">
+                  Manage your deliveries
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button className="w-full bg-white text-orange-500 hover:bg-orange-50 justify-start">
@@ -727,29 +724,33 @@ export default function DeliveryDashboard() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-green-50 rounded-lg p-4 text-center">
                     <p className="text-sm text-gray-600">Today</p>
-                    <h3 className="text-2xl font-bold text-green-500 mt-1">${timeFilter === "today" ? 85 : 0}</h3>
+                    <h3 className="text-2xl font-bold text-green-500 mt-1">
+                      ${timeFilter === "today" ? stats.totalEarnings || 0 : 0}
+                    </h3>
                   </div>
                   <div className="bg-blue-50 rounded-lg p-4 text-center">
                     <p className="text-sm text-gray-600">This Week</p>
-                    <h3 className="text-2xl font-bold text-blue-500 mt-1">${timeFilter === "week" ? 520 : 0}</h3>
+                    <h3 className="text-2xl font-bold text-blue-500 mt-1">
+                      ${timeFilter === "week" ? stats.totalEarnings || 0 : 0}
+                    </h3>
                   </div>
                 </div>
                 <div className="pt-2 border-t">
                   <div className="flex justify-between items-center">
                     <p className="text-sm font-medium">Base Pay</p>
                     <p className="text-sm font-medium">
-                      ${timeFilter === "today" ? 55 : timeFilter === "week" ? 350 : 1200}
+                      ${Math.round((stats.totalEarnings || 0) * 0.7)}
                     </p>
                   </div>
                   <div className="flex justify-between items-center mt-2">
                     <p className="text-sm font-medium">Tips</p>
                     <p className="text-sm font-medium">
-                      ${timeFilter === "today" ? 30 : timeFilter === "week" ? 170 : 650}
+                      ${Math.round((stats.totalEarnings || 0) * 0.3)}
                     </p>
                   </div>
                   <div className="flex justify-between items-center mt-2">
                     <p className="text-sm font-medium">Bonuses</p>
-                    <p className="text-sm font-medium">${timeFilter === "today" ? 0 : timeFilter === "week" ? 0 : 0}</p>
+                    <p className="text-sm font-medium">$0</p>
                   </div>
                 </div>
               </CardContent>
@@ -778,7 +779,7 @@ export default function DeliveryDashboard() {
                 <div className="space-y-4">
                   {deliveryHistory.slice(0, 3).map((delivery, index) => (
                     <motion.div
-                      key={delivery.id}
+                      key={delivery._id}
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.1 }}
@@ -786,26 +787,43 @@ export default function DeliveryDashboard() {
                     >
                       <div className="flex justify-between items-start mb-2">
                         <div>
-                          <h4 className="font-medium">{delivery.id}</h4>
-                          <p className="text-xs text-gray-500">{delivery.time}</p>
+                          <h4 className="font-medium">
+                            Order #
+                            {delivery.order_id?.substring(0, 6) || "Unknown"}
+                          </h4>
+                          <p className="text-xs text-gray-500">
+                            {new Date(
+                              delivery.delivered_at || delivery.createdAt
+                            ).toLocaleString()}
+                          </p>
                         </div>
-                        <Badge className="bg-green-100 text-green-700">{delivery.status}</Badge>
+                        <Badge className="bg-green-100 text-green-700">
+                          DELIVERED
+                        </Badge>
                       </div>
                       <div className="flex justify-between items-center text-sm">
-                        <span>{delivery.restaurant}</span>
-                        <span className="font-medium">${delivery.total.toFixed(2)}</span>
+                        <span>
+                          {delivery.restaurant_contact?.name || "Restaurant"}
+                        </span>
+                        <span className="font-medium">
+                          ${(delivery.order?.total_price || 0).toFixed(2)}
+                        </span>
                       </div>
                       <div className="flex justify-between mt-2">
                         <div className="flex items-center gap-1 text-xs text-gray-500">
                           <MapPin className="h-3 w-3" />
-                          <span>{delivery.distance}</span>
-                          <span className="mx-1">•</span>
-                          <Clock className="h-3 w-3" />
-                          <span>{delivery.duration}</span>
+                          <span>
+                            {delivery.actual_delivery_time || "30"} mins
+                          </span>
                         </div>
                         <div className="flex items-center gap-1 text-xs font-medium text-green-600">
                           <DollarSign className="h-3 w-3" />
-                          <span>${(delivery.earnings + delivery.tip).toFixed(2)}</span>
+                          <span>
+                            $
+                            {(
+                              (delivery.order?.total_price || 0) * 0.15
+                            ).toFixed(2)}
+                          </span>
                         </div>
                       </div>
                     </motion.div>
@@ -813,48 +831,9 @@ export default function DeliveryDashboard() {
                 </div>
               </CardContent>
             </Card>
-
-            {/* Schedule */}
-            <Card className="border-none shadow-md">
-              <CardHeader className="pb-2">
-                <CardTitle>Upcoming Schedule</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <Calendar className="h-5 w-5 text-blue-500" />
-                    </div>
-                    <div>
-                      <h4 className="font-medium">Morning Shift</h4>
-                      <p className="text-xs text-gray-500">Tomorrow, 8:00 AM - 12:00 PM</p>
-                    </div>
-                  </div>
-                  <Badge className="bg-blue-100 text-blue-700">Scheduled</Badge>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <Calendar className="h-5 w-5 text-blue-500" />
-                    </div>
-                    <div>
-                      <h4 className="font-medium">Evening Shift</h4>
-                      <p className="text-xs text-gray-500">Tomorrow, 5:00 PM - 9:00 PM</p>
-                    </div>
-                  </div>
-                  <Badge className="bg-blue-100 text-blue-700">Scheduled</Badge>
-                </div>
-              </CardContent>
-              <CardFooter className="border-t pt-4">
-                <Button className="w-full" variant="outline">
-                  Manage Schedule
-                </Button>
-              </CardFooter>
-            </Card>
           </motion.div>
         </motion.div>
       </div>
     </div>
-  )
+  );
 }
-
