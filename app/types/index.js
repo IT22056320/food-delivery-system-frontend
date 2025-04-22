@@ -54,7 +54,6 @@
  * @property {'pending'|'accepted'|'preparing'|'ready'|'out_for_delivery'|'delivered'|'cancelled'} status
  * @property {string} deliveryAddress
  * @property {string} [deliveryPerson]
- * @property {'pending'|'completed'|'failed'} paymentStatus
  * @property {'card'|'cash'|'wallet'} paymentMethod
  * @property {string} [specialInstructions]
  * @property {Date} [estimatedDeliveryTime]
@@ -65,4 +64,3 @@
 
 // Export empty object since we're just using JSDoc for documentation
 export default {}
-

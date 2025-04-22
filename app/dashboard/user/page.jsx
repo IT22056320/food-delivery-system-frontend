@@ -14,11 +14,10 @@ import {
   ChevronRight,
   Star,
   Clock,
-  MapPin,
-  ArrowUpRight,
   LogOut,
+  Utensils,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -26,113 +25,106 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
-// Sample data for the dashboard
-const recentOrders = [
-  {
-    id: "ORD-7291",
-    restaurant: "Burger Palace",
-    items: 3,
-    total: 24.99,
-    status: "Delivered",
-    date: "Today, 2:30 PM",
-    image: "/placeholder.svg?height=60&width=60",
-  },
-  {
-    id: "ORD-6432",
-    restaurant: "Pizza Heaven",
-    items: 2,
-    total: 18.5,
-    status: "On the way",
-    date: "Today, 12:15 PM",
-    image: "/placeholder.svg?height=60&width=60",
-  },
-  {
-    id: "ORD-5128",
-    restaurant: "Taco Fiesta",
-    items: 4,
-    total: 32.75,
-    status: "Preparing",
-    date: "Today, 11:45 AM",
-    image: "/placeholder.svg?height=60&width=60",
-  },
-]
-
-const favoriteRestaurants = [
-  {
-    id: 1,
-    name: "Burger Palace",
-    rating: 4.8,
-    deliveryTime: "15-20 min",
-    distance: "1.2 km",
-    image: "/placeholder.svg?height=120&width=120",
-  },
-  {
-    id: 2,
-    name: "Pizza Heaven",
-    rating: 4.6,
-    deliveryTime: "20-30 min",
-    distance: "2.5 km",
-    image: "/placeholder.svg?height=120&width=120",
-  },
-  {
-    id: 3,
-    name: "Sushi World",
-    rating: 4.9,
-    deliveryTime: "25-35 min",
-    distance: "3.0 km",
-    image: "/placeholder.svg?height=120&width=120",
-  },
-]
-
-const recommendedItems = [
-  {
-    id: 1,
-    name: "Double Cheeseburger",
-    restaurant: "Burger Palace",
-    price: 12.99,
-    rating: 4.7,
-    image: "/placeholder.svg?height=100&width=100",
-  },
-  {
-    id: 2,
-    name: "Pepperoni Pizza",
-    restaurant: "Pizza Heaven",
-    price: 14.5,
-    rating: 4.8,
-    image: "/placeholder.svg?height=100&width=100",
-  },
-  {
-    id: 3,
-    name: "Chicken Tacos",
-    restaurant: "Taco Fiesta",
-    price: 10.99,
-    rating: 4.6,
-    image: "/placeholder.svg?height=100&width=100",
-  },
-  {
-    id: 4,
-    name: "Veggie Bowl",
-    restaurant: "Green Eats",
-    price: 9.99,
-    rating: 4.5,
-    image: "/placeholder.svg?height=100&width=100",
-  },
-]
-
 export default function UserDashboard() {
   const { user, loading, logout } = useAuth()
   const [activeTab, setActiveTab] = useState("dashboard")
   const [isLoading, setIsLoading] = useState(true)
+  const [restaurants, setRestaurants] = useState([])
+  const [recentOrders, setRecentOrders] = useState([])
+  const [popularItems, setPopularItems] = useState([])
   const router = useRouter()
 
+  // Fetch restaurants from the API
   useEffect(() => {
-    // Simulate loading data
-    const timer = setTimeout(() => {
-      setIsLoading(false)
-    }, 1000)
+    const fetchRestaurants = async () => {
+      try {
+        const response = await fetch("http://localhost:5001/api/restaurants", {
+          credentials: "include",
+        })
 
-    return () => clearTimeout(timer)
-  }, [])
+        if (response.ok) {
+          const data = await response.json()
+          // Filter only verified and available restaurants
+          const availableRestaurants = data.filter((restaurant) => restaurant.isVerified && restaurant.isAvailable)
+          setRestaurants(availableRestaurants)
+        } else {
+          console.error("Failed to fetch restaurants:", await response.text())
+        }
+      } catch (error) {
+        console.error("Error fetching restaurants:", error)
+      }
+    }
+
+    // Fetch recent orders (placeholder for now)
+    const fetchRecentOrders = async () => {
+      // This would be replaced with an actual API call
+      setRecentOrders([
+        {
+          id: "ORD-7291",
+          restaurant: "Burger Palace",
+          items: 3,
+          total: 24.99,
+          status: "Delivered",
+          date: "Today, 2:30 PM",
+          image: "/classic-beef-burger.png",
+        },
+        {
+          id: "ORD-6432",
+          restaurant: "Pizza Heaven",
+          items: 2,
+          total: 18.5,
+          status: "On the way",
+          date: "Today, 12:15 PM",
+          image: "/classic-pepperoni-pizza.png",
+        },
+      ])
+    }
+
+    // Fetch popular menu items (placeholder for now)
+    const fetchPopularItems = async () => {
+      // This would be replaced with an actual API call
+      setPopularItems([
+        {
+          id: 1,
+          name: "Double Cheeseburger",
+          restaurant: "Burger Palace",
+          price: 12.99,
+          rating: 4.7,
+          image: "/classic-cheeseburger.png",
+        },
+        {
+          id: 2,
+          name: "Pepperoni Pizza",
+          restaurant: "Pizza Heaven",
+          price: 14.5,
+          rating: 4.8,
+          image: "/classic-pepperoni-pizza.png",
+        },
+        {
+          id: 3,
+          name: "Chicken Tacos",
+          restaurant: "Taco Fiesta",
+          price: 10.99,
+          rating: 4.6,
+          image: "/colorful-taco-spread.png",
+        },
+        {
+          id: 4,
+          name: "Veggie Bowl",
+          restaurant: "Green Eats",
+          price: 9.99,
+          rating: 4.5,
+          image: "/colorful-garden-salad.png",
+        },
+      ])
+    }
+
+    if (!loading) {
+      Promise.all([fetchRestaurants(), fetchRecentOrders(), fetchPopularItems()]).then(() => {
+        setIsLoading(false)
+      })
+    }
+  }, [loading])
 
   const container = {
     hidden: { opacity: 0 },
@@ -164,6 +156,10 @@ export default function UserDashboard() {
     }
   }
 
+  const viewRestaurant = (restaurantId) => {
+    router.push(`/dashboard/user/restaurants/${restaurantId}`)
+  }
+
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-amber-50 to-orange-100">
       {/* Sidebar */}
@@ -182,7 +178,10 @@ export default function UserDashboard() {
             <Button
               variant={activeTab === "dashboard" ? "default" : "ghost"}
               className={`w-full justify-start ${activeTab === "dashboard" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
-              onClick={() => setActiveTab("dashboard")}
+              onClick={() => {
+                setActiveTab("dashboard")
+                router.push("/dashboard/user")
+              }}
             >
               <Home className="mr-2 h-5 w-5" />
               Dashboard
@@ -191,7 +190,10 @@ export default function UserDashboard() {
             <Button
               variant={activeTab === "orders" ? "default" : "ghost"}
               className={`w-full justify-start ${activeTab === "orders" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
-              onClick={() => setActiveTab("orders")}
+              onClick={() => {
+                setActiveTab("orders")
+                router.push("/dashboard/user/orders")
+              }}
             >
               <ShoppingBag className="mr-2 h-5 w-5" />
               My Orders
@@ -200,7 +202,10 @@ export default function UserDashboard() {
             <Button
               variant={activeTab === "favorites" ? "default" : "ghost"}
               className={`w-full justify-start ${activeTab === "favorites" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
-              onClick={() => setActiveTab("favorites")}
+              onClick={() => {
+                setActiveTab("favorites")
+                router.push("/dashboard/user/favorites")
+              }}
             >
               <Heart className="mr-2 h-5 w-5" />
               Favorites
@@ -209,7 +214,10 @@ export default function UserDashboard() {
             <Button
               variant={activeTab === "profile" ? "default" : "ghost"}
               className={`w-full justify-start ${activeTab === "profile" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
-              onClick={() => setActiveTab("profile")}
+              onClick={() => {
+                setActiveTab("profile")
+                router.push("/dashboard/user/profile")
+              }}
             >
               <User className="mr-2 h-5 w-5" />
               Profile
@@ -286,69 +294,130 @@ export default function UserDashboard() {
           variants={container}
           initial="hidden"
           animate={isLoading ? "hidden" : "show"}
-          className="flex flex-col lg:flex-row gap-6"
+          className="flex flex-col gap-6"
         >
-          {/* Left Column */}
-          <motion.div variants={item} className="flex-1 space-y-6">
-            {/* Quick Stats */}
-            <div className="grid grid-cols-3 gap-4">
-              <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-gray-500 text-sm">Total Orders</p>
-                      <h3 className="text-2xl font-bold mt-1">24</h3>
-                    </div>
-                    <div className="h-12 w-12 bg-orange-100 rounded-full flex items-center justify-center">
-                      <ShoppingBag className="h-6 w-6 text-orange-500" />
-                    </div>
+          {/* Quick Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-gray-500 text-sm">Total Orders</p>
+                    <h3 className="text-2xl font-bold mt-1">{recentOrders.length || 0}</h3>
                   </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-gray-500 text-sm">Favorites</p>
-                      <h3 className="text-2xl font-bold mt-1">8</h3>
-                    </div>
-                    <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center">
-                      <Heart className="h-6 w-6 text-red-500" />
-                    </div>
+                  <div className="h-12 w-12 bg-orange-100 rounded-full flex items-center justify-center">
+                    <ShoppingBag className="h-6 w-6 text-orange-500" />
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </CardContent>
+            </Card>
 
-              <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-gray-500 text-sm">Total Spent</p>
-                      <h3 className="text-2xl font-bold mt-1">$342.75</h3>
-                    </div>
-                    <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="text-green-500"
-                      >
-                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                      </svg>
-                    </div>
+            <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-gray-500 text-sm">Favorites</p>
+                    <h3 className="text-2xl font-bold mt-1">0</h3>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
+                  <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center">
+                    <Heart className="h-6 w-6 text-red-500" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-            {/* Recent Orders */}
+            <Card className="border-none shadow-md hover:shadow-lg transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-gray-500 text-sm">Available Restaurants</p>
+                    <h3 className="text-2xl font-bold mt-1">{restaurants.length || 0}</h3>
+                  </div>
+                  <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
+                    <Utensils className="h-6 w-6 text-green-500" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Restaurants Section */}
+          <Card className="border-none shadow-md">
+            <CardHeader className="pb-2">
+              <div className="flex justify-between items-center">
+                <CardTitle>Restaurants</CardTitle>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input placeholder="Search restaurants..." className="pl-10 w-[250px]" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-48 bg-gray-200 animate-pulse rounded-lg"></div>
+                  ))}
+                </div>
+              ) : restaurants.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {restaurants.map((restaurant) => (
+                    <motion.div
+                      key={restaurant._id}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      whileHover={{ y: -5 }}
+                      className="bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer"
+                      onClick={() => viewRestaurant(restaurant._id)}
+                    >
+                      <div className="h-32 bg-gray-100 relative">
+                        <img
+                          src={
+                            restaurant.image ||
+                            `/placeholder.svg?height=200&width=400&query=${encodeURIComponent(restaurant.name)}`
+                          }
+                          alt={restaurant.name}
+                          className="w-full h-full object-cover"
+                        />
+                        {restaurant.cuisine && restaurant.cuisine.length > 0 && (
+                          <Badge className="absolute top-2 right-2 bg-white text-orange-500">
+                            {restaurant.cuisine[0]}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="p-4">
+                        <h3 className="font-bold text-lg mb-1">{restaurant.name}</h3>
+                        <p className="text-sm text-gray-500 line-clamp-1 mb-2">{restaurant.description}</p>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1">
+                            <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                            <span className="text-sm font-medium">{restaurant.rating || "New"}</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-sm text-gray-500">
+                            <Clock className="h-3 w-3" />
+                            <span>15-30 min</span>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="mx-auto h-12 w-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                    <Utensils className="h-6 w-6 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-700 mb-1">No Restaurants Found</h3>
+                  <p className="text-sm text-gray-500">
+                    There are no restaurants available at the moment. Please check back later.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Recent Orders */}
+          {recentOrders.length > 0 && (
             <Card className="border-none shadow-md">
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-center">
@@ -357,6 +426,7 @@ export default function UserDashboard() {
                     variant="ghost"
                     size="sm"
                     className="text-orange-500 hover:text-orange-600 hover:bg-orange-50 flex items-center gap-1"
+                    onClick={() => router.push("/dashboard/user/orders")}
                   >
                     View All <ChevronRight className="h-4 w-4" />
                   </Button>
@@ -406,11 +476,13 @@ export default function UserDashboard() {
                 </div>
               </CardContent>
             </Card>
+          )}
 
-            {/* Recommended For You */}
+          {/* Popular Items */}
+          {popularItems.length > 0 && (
             <div>
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">Recommended For You</h2>
+                <h2 className="text-xl font-bold">Popular Items</h2>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -420,8 +492,8 @@ export default function UserDashboard() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-4 gap-4">
-                {recommendedItems.map((item, index) => (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {popularItems.map((item, index) => (
                   <motion.div
                     key={item.id}
                     initial={{ opacity: 0, scale: 0.9 }}
@@ -453,127 +525,9 @@ export default function UserDashboard() {
                 ))}
               </div>
             </div>
-          </motion.div>
-
-          {/* Right Column */}
-          <motion.div variants={item} className="w-[350px] space-y-6">
-            {/* Current Order */}
-            <Card className="border-none shadow-md bg-orange-500 text-white">
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-center">
-                  <CardTitle>Current Order</CardTitle>
-                  <Badge className="bg-white text-orange-500 hover:bg-orange-50">On the way</Badge>
-                </div>
-                <CardDescription className="text-orange-100">Estimated delivery: 15-20 min</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-14 w-14 rounded-full bg-white p-1">
-                    <img
-                      src="/placeholder.svg?height=50&width=50"
-                      alt="Restaurant"
-                      className="h-full w-full rounded-full object-cover"
-                    />
-                  </div>
-                  <div>
-                    <h4 className="font-medium">Pizza Heaven</h4>
-                    <div className="flex items-center gap-1 text-sm text-orange-100">
-                      <Clock className="h-3 w-3" />
-                      <span>Preparing your order</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>1 × Margherita Pizza</span>
-                    <span>$12.99</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span>1 × Garlic Bread</span>
-                    <span>$4.50</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span>1 × Coca Cola</span>
-                    <span>$2.50</span>
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-orange-400">
-                  <div className="flex justify-between font-medium">
-                    <span>Total</span>
-                    <span>$19.99</span>
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button className="w-full bg-white text-orange-500 hover:bg-orange-50">Track Order</Button>
-              </CardFooter>
-            </Card>
-
-            {/* Favorite Restaurants */}
-            <Card className="border-none shadow-md">
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-center">
-                  <CardTitle>Favorite Places</CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-orange-500 hover:text-orange-600 hover:bg-orange-50 flex items-center gap-1"
-                  >
-                    View All <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {favoriteRestaurants.map((restaurant, index) => (
-                    <motion.div
-                      key={restaurant.id}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      whileHover={{ x: 5 }}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-white transition-all cursor-pointer"
-                    >
-                      <div className="h-14 w-14 rounded-lg overflow-hidden bg-gray-100">
-                        <img
-                          src={restaurant.image || "/placeholder.svg"}
-                          alt={restaurant.name}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-medium">{restaurant.name}</h4>
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                          <div className="flex items-center gap-1">
-                            <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                            <span>{restaurant.rating}</span>
-                          </div>
-                          <span>•</span>
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            <span>{restaurant.deliveryTime}</span>
-                          </div>
-                          <span>•</span>
-                          <div className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            <span>{restaurant.distance}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button size="icon" variant="ghost" className="h-8 w-8">
-                        <ArrowUpRight className="h-4 w-4" />
-                      </Button>
-                    </motion.div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+          )}
         </motion.div>
       </div>
     </div>
   )
 }
-
