@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import { useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/hooks/use-auth"
@@ -81,14 +81,169 @@ export default function DeliveryDashboard() {
         setAuthChecked(true)
       }
     }
-  }, [user, loading, router])
+  }, [user, loading, router]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setIsLoading(false)
-    }, 1000)
-    return () => clearTimeout(timer)
-  }, [])
+      setIsLoading(false);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Get current location
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude, heading, speed } = position.coords;
+          setCurrentLocation({ lat: latitude, lng: longitude });
+
+          // Update location in backend if user is available
+          if (isAvailable) {
+            updateLocation(
+              latitude,
+              longitude,
+              "AVAILABLE",
+              heading,
+              speed
+            ).catch((error) =>
+              console.error("Error updating location:", error)
+            );
+          }
+        },
+        (error) => {
+          console.error("Geolocation error:", error);
+          toast.error(
+            "Unable to access your location. Please enable location services."
+          );
+        }
+      );
+    } else {
+      toast.error("Geolocation is not supported by this browser.");
+    }
+  }, [isAvailable]);
+
+  // Fetch active deliveries
+  useEffect(() => {
+    if (!loading && user) {
+      fetchActiveDeliveries();
+      fetchAvailableDeliveries();
+      fetchDeliveryHistory();
+      fetchDeliveryStats();
+    }
+  }, [loading, user, timeFilter]);
+
+  const fetchActiveDeliveries = async () => {
+    try {
+      const data = await getMyDeliveries();
+      setActiveDeliveries(data);
+      if (data.length > 0 && !selectedDelivery) {
+        setSelectedDelivery(data[0]._id);
+      }
+    } catch (error) {
+      console.error("Error fetching active deliveries:", error);
+    }
+  };
+
+  const fetchAvailableDeliveries = async () => {
+    if (!isAvailable) return;
+
+    try {
+      const data = await getAvailableDeliveries();
+      setAvailableDeliveries(data);
+    } catch (error) {
+      console.error("Error fetching available deliveries:", error);
+    }
+  };
+
+  const fetchDeliveryHistory = async () => {
+    try {
+      const data = await getDeliveryHistory();
+      setDeliveryHistory(data.deliveries);
+    } catch (error) {
+      console.error("Error fetching delivery history:", error);
+    }
+  };
+
+  const fetchDeliveryStats = async () => {
+    try {
+      const data = await getDeliveryStats(timeFilter);
+      setStats(data);
+    } catch (error) {
+      console.error("Error fetching delivery stats:", error);
+    }
+  };
+
+  const handleUpdateDeliveryStatus = async (deliveryId, status, notes = "") => {
+    try {
+      await updateDeliveryStatus(deliveryId, status, notes);
+      toast.success(`Delivery status updated to ${status}`);
+      fetchActiveDeliveries();
+    } catch (error) {
+      console.error("Error updating delivery status:", error);
+      toast.error("An error occurred while updating delivery status");
+    }
+  };
+
+  const handleAcceptDelivery = async (deliveryId) => {
+    try {
+      await acceptDelivery(deliveryId);
+      toast.success("Delivery accepted");
+      fetchActiveDeliveries();
+      fetchAvailableDeliveries();
+    } catch (error) {
+      console.error("Error accepting delivery:", error);
+      toast.error("Failed to accept delivery");
+    }
+  };
+
+  const updateAvailability = async (isAvailable) => {
+    try {
+      if (!currentLocation) {
+        toast.error("Unable to update availability without location");
+        return;
+      }
+
+      await updateLocation(
+        currentLocation.lat,
+        currentLocation.lng,
+        isAvailable ? "AVAILABLE" : "OFFLINE"
+      );
+
+      setIsAvailable(isAvailable);
+      toast.success(
+        isAvailable
+          ? "You are now available for deliveries"
+          : "You are now offline"
+      );
+
+      if (isAvailable) {
+        fetchAvailableDeliveries();
+      }
+    } catch (error) {
+      console.error("Error updating availability:", error);
+      toast.error("An error occurred while updating availability");
+    }
+  };
+
+  const handleLocationUpdate = useCallback((newLocation) => {
+    setCurrentLocation(newLocation);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch("http://localhost:5000/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+      logout();
+      router.push("/login");
+      toast.success("Logged out successfully");
+    } catch (error) {
+      console.error("Logout failed:", error);
+      toast.error("Logout failed. Please try again.");
+    }
+  };
 
   // Get current location and set up tracking
   useEffect(() => {
@@ -325,7 +480,7 @@ export default function DeliveryDashboard() {
   }
 
   if (loading || !user) {
-    return <div className="p-6">Loading...</div>
+    return <div className="p-6">Loading...</div>;
   }
 
   const container = {
@@ -336,7 +491,7 @@ export default function DeliveryDashboard() {
         staggerChildren: 0.1,
       },
     },
-  }
+  };
 
   const item = {
     hidden: { y: 20, opacity: 0 },
@@ -364,7 +519,10 @@ export default function DeliveryDashboard() {
           <nav className="space-y-1">
             <Button
               variant={activeTab === "dashboard" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "dashboard" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+              className={`w-full justify-start ${activeTab === "dashboard"
+                  ? "bg-orange-500 hover:bg-orange-600"
+                  : ""
+                }`}
               onClick={() => setActiveTab("dashboard")}
             >
               <Home className="mr-2 h-5 w-5" />
@@ -373,7 +531,10 @@ export default function DeliveryDashboard() {
 
             <Button
               variant={activeTab === "deliveries" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "deliveries" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+              className={`w-full justify-start ${activeTab === "deliveries"
+                  ? "bg-orange-500 hover:bg-orange-600"
+                  : ""
+                }`}
               onClick={() => setActiveTab("deliveries")}
             >
               <Truck className="mr-2 h-5 w-5" />
@@ -382,7 +543,10 @@ export default function DeliveryDashboard() {
 
             <Button
               variant={activeTab === "earnings" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "earnings" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+              className={`w-full justify-start ${activeTab === "earnings"
+                  ? "bg-orange-500 hover:bg-orange-600"
+                  : ""
+                }`}
               onClick={() => setActiveTab("earnings")}
             >
               <Wallet className="mr-2 h-5 w-5" />
@@ -391,7 +555,10 @@ export default function DeliveryDashboard() {
 
             <Button
               variant={activeTab === "analytics" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "analytics" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+              className={`w-full justify-start ${activeTab === "analytics"
+                  ? "bg-orange-500 hover:bg-orange-600"
+                  : ""
+                }`}
               onClick={() => setActiveTab("analytics")}
             >
               <BarChart3 className="mr-2 h-5 w-5" />
@@ -400,7 +567,10 @@ export default function DeliveryDashboard() {
 
             <Button
               variant={activeTab === "settings" ? "default" : "ghost"}
-              className={`w-full justify-start ${activeTab === "settings" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+              className={`w-full justify-start ${activeTab === "settings"
+                  ? "bg-orange-500 hover:bg-orange-600"
+                  : ""
+                }`}
               onClick={() => setActiveTab("settings")}
             >
               <Settings className="mr-2 h-5 w-5" />
@@ -423,7 +593,9 @@ export default function DeliveryDashboard() {
             <CardContent className="p-4">
               <div className="flex flex-col items-center gap-2">
                 <div className="flex items-center justify-between w-full mb-2">
-                  <span className="text-sm font-medium">Available for Deliveries</span>
+                  <span className="text-sm font-medium">
+                    Available for Deliveries
+                  </span>
                   <Switch
                     checked={isAvailable}
                     onCheckedChange={(checked) => updateAvailability(checked)}
@@ -431,7 +603,10 @@ export default function DeliveryDashboard() {
                   />
                 </div>
                 <div
-                  className={`w-full p-2 rounded-md text-center text-sm font-medium ${isAvailable ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}
+                  className={`w-full p-2 rounded-md text-center text-sm font-medium ${isAvailable
+                      ? "bg-green-100 text-green-700"
+                      : "bg-gray-100 text-gray-700"
+                    }`}
                 >
                   {isAvailable ? "Online" : "Offline"}
                 </div>
@@ -459,7 +634,9 @@ export default function DeliveryDashboard() {
                 </motion.span>
               )}
             </h1>
-            <p className="text-gray-500">Welcome back, {user?.name || "Driver"}</p>
+            <p className="text-gray-500">
+              Welcome back, {user?.name || "Driver"}
+            </p>
           </div>
 
           <div className="flex items-center gap-4">
@@ -472,14 +649,20 @@ export default function DeliveryDashboard() {
 
             <Avatar>
               <AvatarImage src="/placeholder.svg?height=40&width=40" />
-              <AvatarFallback className="bg-orange-200 text-orange-700">{user?.name?.charAt(0) || "D"}</AvatarFallback>
+              <AvatarFallback className="bg-orange-200 text-orange-700">
+                {user?.name?.charAt(0) || "D"}
+              </AvatarFallback>
             </Avatar>
           </div>
         </header>
 
         {/* Time Period Filter */}
         <div className="mb-6">
-          <Tabs defaultValue="today" value={timeFilter} onValueChange={setTimeFilter}>
+          <Tabs
+            defaultValue="today"
+            value={timeFilter}
+            onValueChange={setTimeFilter}
+          >
             <TabsList>
               <TabsTrigger value="today">Today</TabsTrigger>
               <TabsTrigger value="week">This Week</TabsTrigger>
@@ -506,7 +689,8 @@ export default function DeliveryDashboard() {
                       <p className="text-gray-500 text-sm">Total Deliveries</p>
                       <h3 className="text-2xl font-bold mt-1">{stats.totalDeliveries || 0}</h3>
                       <p className="text-green-500 text-xs mt-1 flex items-center">
-                        <TrendingUp className="h-3 w-3 mr-1" /> +12% from last {timeFilter}
+                        <TrendingUp className="h-3 w-3 mr-1" /> +12% from last{" "}
+                        {timeFilter}
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-orange-100 rounded-full flex items-center justify-center">
@@ -523,7 +707,8 @@ export default function DeliveryDashboard() {
                       <p className="text-gray-500 text-sm">Total Earnings</p>
                       <h3 className="text-2xl font-bold mt-1">${stats.totalEarnings || 0}</h3>
                       <p className="text-green-500 text-xs mt-1 flex items-center">
-                        <TrendingUp className="h-3 w-3 mr-1" /> +8% from last {timeFilter}
+                        <TrendingUp className="h-3 w-3 mr-1" /> +8% from last{" "}
+                        {timeFilter}
                       </p>
                     </div>
                     <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
@@ -619,7 +804,9 @@ export default function DeliveryDashboard() {
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-center">
                   <CardTitle>Active Deliveries</CardTitle>
-                  <Badge className="bg-green-100 text-green-700">{activeDeliveries.length} Active</Badge>
+                  <Badge className="bg-green-100 text-green-700">
+                    {activeDeliveries.length} Active
+                  </Badge>
                 </div>
               </CardHeader>
               <CardContent>
@@ -671,7 +858,11 @@ export default function DeliveryDashboard() {
                             </div>
                           </div>
                         </div>
-                        <Button variant="outline" size="sm" className="flex-shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-shrink-0"
+                        >
                           Navigate
                         </Button>
                       </motion.div>
@@ -682,9 +873,12 @@ export default function DeliveryDashboard() {
                     <div className="h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                       <Truck className="h-8 w-8 text-gray-400" />
                     </div>
-                    <h3 className="text-lg font-medium text-gray-700 mb-1">No Active Deliveries</h3>
+                    <h3 className="text-lg font-medium text-gray-700 mb-1">
+                      No Active Deliveries
+                    </h3>
                     <p className="text-sm text-gray-500 text-center max-w-md">
-                      You don't have any active deliveries at the moment. New delivery requests will appear here.
+                      You don't have any active deliveries at the moment. New
+                      delivery requests will appear here.
                     </p>
                   </div>
                 )}
@@ -705,7 +899,9 @@ export default function DeliveryDashboard() {
             <Card className="border-none shadow-md bg-orange-500 text-white">
               <CardHeader className="pb-2">
                 <CardTitle>Quick Actions</CardTitle>
-                <CardDescription className="text-orange-100">Manage your deliveries</CardDescription>
+                <CardDescription className="text-orange-100">
+                  Manage your deliveries
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button className="w-full bg-white text-orange-500 hover:bg-orange-50 justify-start">
@@ -818,5 +1014,5 @@ export default function DeliveryDashboard() {
         </motion.div>
       </div>
     </div>
-  )
+  );
 }
