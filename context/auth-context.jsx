@@ -3,7 +3,8 @@
 import { createContext, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { logoutUser } from "@/lib/api"
+import { logoutUser } from "@/lib/auth-api"
+import { fetchUser } from "@/lib/auth-api"
 
 export const AuthContext = createContext()
 
@@ -14,16 +15,20 @@ export function AuthProvider({ children }) {
 
   // Fetch logged-in user on first load
   useEffect(() => {
-    fetch("http://localhost:5000/api/auth/me", {
-      credentials: "include",
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.user) setUser(data.user)
-      })
-      .finally(() => setLoading(false))
-  }, [])
+    const fetchUserData = async () => {
+      try {
+        const userData = await fetchUser()
+        setUser(userData)
+      } catch (error) {
+        console.error("Error fetching user data:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
 
+    fetchUserData()
+  }, [])
+  
   // Role-based convenience flags
   const isAdmin = user?.role === "admin"
   const isRestaurantOwner = user?.role === "restaurant_owner"

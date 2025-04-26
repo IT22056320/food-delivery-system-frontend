@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { getAllRestaurants } from "@/lib/restaurant-api"
 
 export default function UserDashboard() {
   const { user, loading, logout } = useAuth()
@@ -38,22 +39,17 @@ export default function UserDashboard() {
   useEffect(() => {
     const fetchRestaurants = async () => {
       try {
-        const response = await fetch("http://localhost:5001/api/restaurants", {
-          credentials: "include",
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          // Filter only verified and available restaurants
-          const availableRestaurants = data.filter((restaurant) => restaurant.isVerified && restaurant.isAvailable)
-          setRestaurants(availableRestaurants)
-        } else {
-          console.error("Failed to fetch restaurants:", await response.text())
-        }
+        const data = await getAllRestaurants();
+        const availableRestaurants = data.filter(
+          (restaurant) => restaurant.isVerified && restaurant.isAvailable
+        );
+        setRestaurants(availableRestaurants);
       } catch (error) {
-        console.error("Error fetching restaurants:", error)
+        console.error("Error fetching restaurants:", error.message);
       }
-    }
+    };
+
+    fetchRestaurants();
 
     // Fetch recent orders (placeholder for now)
     const fetchRecentOrders = async () => {
@@ -185,6 +181,18 @@ export default function UserDashboard() {
             >
               <Home className="mr-2 h-5 w-5" />
               Dashboard
+            </Button>
+
+            <Button
+              variant={activeTab === "restaurants" ? "default" : "ghost"}
+              className={`w-full justify-start ${activeTab === "restaurants" ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+              onClick={() => {
+                setActiveTab("restaurants")
+                router.push("/dashboard/user/restaurants")
+              }}
+            >
+              <Pizza className="mr-2 h-5 w-5" />
+              Restaurants
             </Button>
 
             <Button
@@ -347,8 +355,14 @@ export default function UserDashboard() {
               <div className="flex justify-between items-center">
                 <CardTitle>Restaurants</CardTitle>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input placeholder="Search restaurants..." className="pl-10 w-[250px]" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-orange-500 hover:text-orange-600 hover:bg-orange-50 flex items-center cursor-pointer gap-1"
+                    onClick={() => router.push("/dashboard/user/restaurants")}
+                  >
+                    View All <ChevronRight className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             </CardHeader>

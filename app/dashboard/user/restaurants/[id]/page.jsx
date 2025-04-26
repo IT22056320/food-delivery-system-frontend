@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
+import { getRestaurantById, getMenuItems } from "@/lib/restaurant-api"
 
 export default function RestaurantDetailPage() {
     const { user, loading, logout } = useAuth()
@@ -43,17 +44,9 @@ export default function RestaurantDetailPage() {
     useEffect(() => {
         const fetchRestaurant = async () => {
             try {
-                const response = await fetch(`http://localhost:5001/api/restaurants/${id}`, {
-                    credentials: "include",
-                })
-
-                if (response.ok) {
-                    const data = await response.json()
-                    setRestaurant(data)
-                } else {
-                    console.error("Failed to fetch restaurant:", await response.text())
-                    toast.error("Failed to load restaurant details")
-                }
+                const response = await getRestaurantById(id, { credentials: "include" })
+                setRestaurant(response)
+                console.log("Restaurant details:", response)
             } catch (error) {
                 console.error("Error fetching restaurant:", error)
                 toast.error("Error loading restaurant details")
@@ -63,29 +56,23 @@ export default function RestaurantDetailPage() {
         // Fetch menu items
         const fetchMenuItems = async () => {
             try {
-                const response = await fetch(`http://localhost:5001/api/menu-items/restaurant/${id}`, {
-                    credentials: "include",
-                })
-
-                if (response.ok) {
-                    const data = await response.json()
-                    setMenuItems(data)
-
-                    // Extract unique categories
-                    const categories = [...new Set(data.map((item) => item.category))]
-                    setMenuCategories(categories)
-                    if (categories.length > 0) {
-                        setActiveCategory("all")
-                    }
-                } else {
-                    console.error("Failed to fetch menu items:", await response.text())
+                const data = await getMenuItems(id);
+                console.log("Menu items:", data);
+                setMenuItems(data);
+          
+                // Extract unique categories
+                const categories = [...new Set(data.map((item) => item.category))];
+                setMenuCategories(categories);
+          
+                if (categories.length > 0) {
+                  setActiveCategory("all");
                 }
-            } catch (error) {
-                console.error("Error fetching menu items:", error)
-            }
+              } catch (error) {
+                console.error("Error fetching menu items:", error.message);
+              }
         }
 
-        if (id && !loading) {
+        if (id) {
             Promise.all([fetchRestaurant(), fetchMenuItems()])
                 .then(() => setIsLoading(false))
                 .catch(() => setIsLoading(false))

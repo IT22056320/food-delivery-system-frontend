@@ -25,6 +25,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { toast } from "sonner"
 import { loadStripe } from "@stripe/stripe-js"
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js"
+import { confirmPayment } from "@/lib/order-api"
 
 // Initialize Stripe with the publishable key directly
 // This ensures the key is available at runtime

@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getAllRestaurants } from "@/lib/restaurant-api"
 
 export default function RestaurantsPage() {
     const { user, loading, logout } = useAuth()
@@ -40,18 +41,10 @@ export default function RestaurantsPage() {
     useEffect(() => {
         const fetchRestaurants = async () => {
             try {
-                const response = await fetch("http://localhost:5001/api/restaurants", {
-                    credentials: "include",
-                })
-
-                if (!response.ok) {
-                    throw new Error("Failed to fetch restaurants")
-                }
-
-                const data = await response.json()
-                // Filter only verified and available restaurants
-                const filteredData = data.filter((restaurant) => restaurant.isVerified && restaurant.isAvailable)
-                setRestaurants(filteredData)
+                const response = await getAllRestaurants()
+                const verifiedRestaurants = response.filter(
+                    (restaurant) => restaurant.isVerified && restaurant.isAvailable)
+                setRestaurants(verifiedRestaurants)
             } catch (error) {
                 console.error("Error fetching restaurants:", error)
                 toast.error("Failed to load restaurants")

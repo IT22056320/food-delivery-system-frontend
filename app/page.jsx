@@ -133,7 +133,7 @@ export default function Homepage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-500 to-amber-50">
+    <div className="min-h-screen w-auto bg-gradient-to-br from-orange-500 to-amber-50">
       {/* Navbar */}
       <header
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
@@ -171,17 +171,17 @@ export default function Homepage() {
 
             <div className="hidden md:flex items-center gap-4">
               <Link href="/login">
-                <Button variant={isScrolled ? "outline" : "secondary"} className="font-medium">
+                <Button variant={isScrolled ? "outline" : "secondary"} className="font-medium cursor-pointer">
                   Log In
                 </Button>
               </Link>
               <Link href="/register">
-                <Button className="bg-orange-500 hover:bg-orange-600 text-white font-medium">Sign Up</Button>
+                <Button className="bg-orange-500 hover:bg-orange-600 text-white font-medium cursor-pointer">Sign Up</Button>
               </Link>
             </div>
 
             {/* Mobile Menu Button */}
-            <button className="md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+            <button className="md:hidden cursor-pointer" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               {mobileMenuOpen ? (
                 <X className={`h-6 w-6 ${isScrolled ? "text-gray-800" : "text-black"}`} />
               ) : (
