@@ -16,6 +16,7 @@ import {
   Clock,
   LogOut,
   Utensils,
+  Package,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -38,6 +39,7 @@ export default function UserDashboard() {
   useEffect(() => {
     const fetchRestaurants = async () => {
       try {
+        console.log("Fetching restaurants")
         const response = await fetch("http://localhost:5001/api/restaurants", {
           credentials: "include",
         })
@@ -55,29 +57,80 @@ export default function UserDashboard() {
       }
     }
 
-    // Fetch recent orders (placeholder for now)
+    // Fetch recent orders from the correct endpoint
     const fetchRecentOrders = async () => {
-      // This would be replaced with an actual API call
-      setRecentOrders([
-        {
-          id: "ORD-7291",
-          restaurant: "Burger Palace",
-          items: 3,
-          total: 24.99,
-          status: "Delivered",
-          date: "Today, 2:30 PM",
-          image: "/classic-beef-burger.png",
-        },
-        {
-          id: "ORD-6432",
-          restaurant: "Pizza Heaven",
-          items: 2,
-          total: 18.5,
-          status: "On the way",
-          date: "Today, 12:15 PM",
-          image: "/classic-pepperoni-pizza.png",
-        },
-      ])
+      try {
+        console.log("Fetching recent orders from http://localhost:5002/api/orders")
+        const response = await fetch("http://localhost:5002/api/orders?limit=2", {
+          credentials: "include",
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setRecentOrders(
+            data.slice(0, 2).map((order) => ({
+              id: order._id,
+              restaurant: order.restaurant_name || "Restaurant",
+              items: order.items?.length || 0,
+              total: order.total_price || 0,
+              status:
+                order.order_status === "DELIVERED"
+                  ? "Delivered"
+                  : order.order_status === "OUT_FOR_DELIVERY"
+                    ? "On the way"
+                    : order.order_status,
+              date: new Date(order.createdAt).toLocaleString(),
+              image: "/classic-beef-burger.png",
+            })),
+          )
+        } else {
+          console.error("Failed to fetch recent orders:", await response.text())
+          // Fallback to placeholder data
+          setRecentOrders([
+            {
+              id: "ORD-7291",
+              restaurant: "Burger Palace",
+              items: 3,
+              total: 24.99,
+              status: "Delivered",
+              date: "Today, 2:30 PM",
+              image: "/classic-beef-burger.png",
+            },
+            {
+              id: "ORD-6432",
+              restaurant: "Pizza Heaven",
+              items: 2,
+              total: 18.5,
+              status: "On the way",
+              date: "Today, 12:15 PM",
+              image: "/classic-pepperoni-pizza.png",
+            },
+          ])
+        }
+      } catch (error) {
+        console.error("Error fetching recent orders:", error)
+        // Fallback to placeholder data
+        setRecentOrders([
+          {
+            id: "ORD-7291",
+            restaurant: "Burger Palace",
+            items: 3,
+            total: 24.99,
+            status: "Delivered",
+            date: "Today, 2:30 PM",
+            image: "/classic-beef-burger.png",
+          },
+          {
+            id: "ORD-6432",
+            restaurant: "Pizza Heaven",
+            items: 2,
+            total: 18.5,
+            status: "On the way",
+            date: "Today, 12:15 PM",
+            image: "/classic-pepperoni-pizza.png",
+          },
+        ])
+      }
     }
 
     // Fetch popular menu items (placeholder for now)
@@ -231,6 +284,13 @@ export default function UserDashboard() {
               Logout
             </Button>
           </nav>
+          <Button
+            onClick={() => router.push("/dashboard/user/orders")}
+            className="w-full flex items-center justify-center gap-2"
+          >
+            <Package className="h-5 w-5" />
+            View Orders
+          </Button>
         </div>
 
         <div className="p-4 mt-auto">
@@ -374,7 +434,7 @@ export default function UserDashboard() {
                         <img
                           src={
                             restaurant.image ||
-                            `/placeholder.svg?height=200&width=400&query=${encodeURIComponent(restaurant.name)}`
+                            `/placeholder.svg?height=200&width=400&query=${encodeURIComponent(restaurant.name) || "/placeholder.svg"}`
                           }
                           alt={restaurant.name}
                           className="w-full h-full object-cover"
