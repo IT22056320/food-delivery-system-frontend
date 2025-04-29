@@ -1,4 +1,5 @@
 "use client"
+import * as React from "react"
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
 import { cn } from "@/lib/utils"
@@ -30,6 +31,17 @@ function AlertDialogOverlay({ className, ...props }) {
 }
 
 function AlertDialogContent({ className, ...props }) {
+    const [isMounted, setIsMounted] = React.useState(false)
+
+    React.useEffect(() => {
+        setIsMounted(true)
+        return () => setIsMounted(false)
+    }, [])
+
+    if (!isMounted) {
+        return null
+    }
+
     return (
         <AlertDialogPortal>
             <AlertDialogOverlay />
@@ -118,4 +130,3 @@ export {
     AlertDialogAction,
     AlertDialogCancel,
 }
-
