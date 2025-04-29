@@ -15,6 +15,7 @@ import {
     Clock,
     Check,
     LogOut,
+    MapPin,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,9 +23,12 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { loadStripe } from "@stripe/stripe-js"
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js"
+import LocationPicker from "@/components/location-picker"
+import GoogleMapsLoader from "@/components/google-maps-loader"
 
 // Initialize Stripe with the publishable key directly
 // This ensures the key is available at runtime
@@ -120,6 +124,7 @@ export default function CheckoutPage() {
     const [clientSecret, setClientSecret] = useState("")
     const [orderId, setOrderId] = useState("")
     const [orderCreated, setOrderCreated] = useState(false)
+    const [locationPickerOpen, setLocationPickerOpen] = useState(false)
     const apiUrl = "http://localhost:5002/api"
 
     const [form, setForm] = useState({
@@ -128,6 +133,12 @@ export default function CheckoutPage() {
         email: "",
         address: "",
         specialInstructions: "",
+        location: {
+            coordinates: {
+                lat: null,
+                lng: null,
+            },
+        },
     })
 
     useEffect(() => {
@@ -169,6 +180,30 @@ export default function CheckoutPage() {
         }))
     }
 
+    const handleLocationSelect = (location) => {
+        console.log("Location selected:", location)
+
+        // Ensure we have valid coordinates
+        if (!location || typeof location.lat !== "number" || typeof location.lng !== "number") {
+            toast.error("Invalid location selected. Please try again.")
+            return
+        }
+
+        setForm((prev) => ({
+            ...prev,
+            address: location.address || "Unknown address",
+            location: {
+                coordinates: {
+                    lat: Number(location.lat),
+                    lng: Number(location.lng),
+                },
+            },
+        }))
+
+        console.log("Form after location update:", form)
+        setLocationPickerOpen(false)
+    }
+
     const handleSubmit = async (e) => {
         e.preventDefault()
 
@@ -183,9 +218,27 @@ export default function CheckoutPage() {
             return
         }
 
+        // Validate location coordinates
+        if (
+            !form.location ||
+            !form.location.coordinates ||
+            form.location.coordinates.lat === null ||
+            form.location.coordinates.lng === null
+        ) {
+            toast.error("Please select a delivery location on the map")
+            return
+        }
+
         setIsLoading(true)
 
         try {
+            // Log the data being sent
+            console.log("Submitting order with location:", form.location)
+
+            // Convert lat/lng to GeoJSON format (MongoDB requires [longitude, latitude] order)
+            const lat = Number(form.location.coordinates.lat)
+            const lng = Number(form.location.coordinates.lng)
+
             // Prepare order data
             const orderData = {
                 restaurant_id: cart.restaurantId,
@@ -197,11 +250,24 @@ export default function CheckoutPage() {
                 })),
                 total_price: cart.total + 2.99 + cart.total * 0.08, // Subtotal + delivery fee + tax
                 delivery_address: form.address,
+                delivery_location: {
+                    address: form.address,
+                    coordinates: {
+                        lat: lat,
+                        lng: lng,
+                    },
+                    geometry: {
+                        type: "Point",
+                        coordinates: [lng, lat], // GeoJSON format: [longitude, latitude]
+                    },
+                },
                 payment_method: paymentMethod,
                 payment_status: "PENDING",
                 extra_notes: form.specialInstructions ? [form.specialInstructions] : [],
                 order_status: "PENDING",
             }
+
+            console.log("Order data being sent:", orderData)
 
             // Create order
             const response = await fetch(`${apiUrl}/orders`, {
@@ -214,7 +280,8 @@ export default function CheckoutPage() {
             })
 
             if (!response.ok) {
-                throw new Error("Failed to create order")
+                const errorData = await response.json()
+                throw new Error(errorData.error || "Failed to create order")
             }
 
             const data = await response.json()
@@ -263,7 +330,7 @@ export default function CheckoutPage() {
             }
         } catch (error) {
             console.error("Error placing order:", error)
-            toast.error("Failed to place order. Please try again.")
+            toast.error(`Failed to place order: ${error.message}`)
             setIsLoading(false)
         } finally {
             if (!orderCreated) {
@@ -460,7 +527,54 @@ export default function CheckoutPage() {
 
                                         <div className="space-y-2">
                                             <Label htmlFor="address">Delivery Address *</Label>
-                                            <Textarea id="address" name="address" value={form.address} onChange={handleChange} required />
+                                            <div className="flex">
+                                                <Textarea
+                                                    id="address"
+                                                    name="address"
+                                                    value={form.address}
+                                                    onChange={handleChange}
+                                                    required
+                                                    className="rounded-r-none"
+                                                    readOnly
+                                                />
+                                                <Dialog open={locationPickerOpen} onOpenChange={setLocationPickerOpen}>
+                                                    <DialogTrigger asChild>
+                                                        <Button className="rounded-l-none" type="button">
+                                                            <MapPin className="h-4 w-4 mr-2" /> {form.address ? "Change Location" : "Select on Map"}
+                                                        </Button>
+                                                    </DialogTrigger>
+                                                    <DialogContent className="sm:max-w-[600px]">
+                                                        <DialogHeader>
+                                                            <DialogTitle>Select Delivery Location</DialogTitle>
+                                                        </DialogHeader>
+                                                        <GoogleMapsLoader>
+                                                            {({ isLoaded, isLoading }) =>
+                                                                isLoaded ? (
+                                                                    <LocationPicker
+                                                                        initialLocation={form.location?.coordinates}
+                                                                        onLocationSelect={handleLocationSelect}
+                                                                        buttonText="Confirm Delivery Location"
+                                                                        placeholder="Search for your delivery address"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="flex justify-center items-center h-[400px]">
+                                                                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+                                                                    </div>
+                                                                )
+                                                            }
+                                                        </GoogleMapsLoader>
+                                                    </DialogContent>
+                                                </Dialog>
+                                            </div>
+                                            {!form.address && (
+                                                <p className="text-sm text-red-500 mt-1">Please select your delivery location on the map</p>
+                                            )}
+                                            {form.location?.coordinates?.lat && (
+                                                <p className="text-xs text-green-600 mt-1">
+                                                    Location coordinates: {form.location.coordinates.lat.toFixed(6)},{" "}
+                                                    {form.location.coordinates.lng.toFixed(6)}
+                                                </p>
+                                            )}
                                         </div>
 
                                         <div className="space-y-2">

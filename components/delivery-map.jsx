@@ -1,376 +1,518 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
-import { io } from "socket.io-client"
-import L from "leaflet"
-import "leaflet/dist/leaflet.css"
-import "leaflet-routing-machine"
-import { updateLocation } from "@/lib/delivery-api"
+import { useState, useEffect, useRef } from "react"
+import { Card, CardContent } from "@/components/ui/card"
 import { toast } from "sonner"
 
-// Fix Leaflet icon issues
-const fixLeafletIcon = () => {
-    delete L.Icon.Default.prototype._getIconUrl
-    L.Icon.Default.mergeOptions({
-        iconRetinaUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
-        iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
-        shadowUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
-    })
-}
-
-// Custom delivery icon
-const createDeliveryIcon = () => {
-    return L.divIcon({
-        html: `<div class="delivery-marker">
-             <div class="delivery-marker-icon">
-               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
-                 <path d="M8.965 18a3.5 3.5 0 0 1-6.93 0H1V6a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2h3l3 4.056V18h-2.035a3.5 3.5 0 0 1-6.93 0h-5.07zM15 7H3v8.05a3.5 3.5 0 0 1 5.663.95h5.674c.168-.353.393-.674.663-.95V7zm2 8h4v-3.5L18.5 8H17v7zm-7.5 4a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm12 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/>
-               </svg>
-             </div>
-             <div class="delivery-marker-pulse"></div>
-           </div>`,
-        className: "",
-        iconSize: [36, 36],
-        iconAnchor: [18, 18],
-    })
-}
-
-export default function DeliveryMap({
+const DeliveryMap = ({
     deliveryId,
     pickupLocation,
     deliveryLocation,
+    currentLocation = null,
     isDeliveryPerson = false,
-    onLocationUpdate = () => { },
-    className = "",
-}) {
+    className = "h-[300px] w-full",
+}) => {
+    const [map, setMap] = useState(null)
+    const [directionsRenderer, setDirectionsRenderer] = useState(null)
+    const [directionsService, setDirectionsService] = useState(null)
+    const [restaurantMarker, setRestaurantMarker] = useState(null)
+    const [customerMarker, setCustomerMarker] = useState(null)
+    const [driverMarker, setDriverMarker] = useState(null)
+    const [isLoading, setIsLoading] = useState(true)
+    const [estimatedTime, setEstimatedTime] = useState(null)
+    const [routeMode, setRouteMode] = useState("pickup") // 'pickup' or 'delivery'
     const mapRef = useRef(null)
-    const mapInstanceRef = useRef(null)
-    const socketRef = useRef(null)
-    const markerRef = useRef(null)
-    const routingControlRef = useRef(null)
-    const watchIdRef = useRef(null)
+    const locationUpdateInterval = useRef(null)
+    const simulationInterval = useRef(null)
+    const routePoints = useRef([])
+    const currentPointIndex = useRef(0)
+    const originalEta = useRef(null)
 
-    const [currentLocation, setCurrentLocation] = useState(null)
-    const [isMapReady, setIsMapReady] = useState(false)
-    const [isSocketConnected, setIsSocketConnected] = useState(false)
-
-    // Initialize map
+    // Initialize Google Maps
     useEffect(() => {
-        if (!mapRef.current) return
+        const loadGoogleMaps = async () => {
+            try {
+                setIsLoading(true)
 
-        // Fix Leaflet icon issues
-        fixLeafletIcon()
+                // Check if Google Maps API is already loaded
+                if (!window.google || !window.google.maps) {
+                    console.error("Google Maps API not loaded")
+                    toast.error("Failed to load maps. Please try again later.")
+                    setIsLoading(false)
+                    return
+                }
 
-        // Create map instance
-        const map = L.map(mapRef.current, {
-            center: [6.9271, 79.8612], // Default to Colombo, Sri Lanka
-            zoom: 13,
-            layers: [
-                L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                }),
-            ],
-        })
+                // Create map instance
+                const mapInstance = new window.google.maps.Map(mapRef.current, {
+                    zoom: 13,
+                    mapTypeControl: false,
+                    fullscreenControl: false,
+                    streetViewControl: false,
+                    zoomControl: true,
+                })
 
-        // Save map instance
-        mapInstanceRef.current = map
+                // Create directions service and renderer
+                const directionsServiceInstance = new window.google.maps.DirectionsService()
+                const directionsRendererInstance = new window.google.maps.DirectionsRenderer({
+                    map: mapInstance,
+                    suppressMarkers: true,
+                    polylineOptions: {
+                        strokeColor: "#FF5722",
+                        strokeWeight: 5,
+                        strokeOpacity: 0.7,
+                    },
+                })
 
-        // Set map as ready
-        setIsMapReady(true)
+                // Create markers
+                const restaurantMarkerInstance = new window.google.maps.Marker({
+                    map: mapInstance,
+                    icon: {
+                        url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
+                        scaledSize: new window.google.maps.Size(40, 40),
+                    },
+                })
 
-        // Cleanup
+                const customerMarkerInstance = new window.google.maps.Marker({
+                    map: mapInstance,
+                    icon: {
+                        url: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+                        scaledSize: new window.google.maps.Size(40, 40),
+                    },
+                })
+
+                const driverMarkerInstance = new window.google.maps.Marker({
+                    map: mapInstance,
+                    icon: {
+                        url: "https://maps.google.com/mapfiles/ms/icons/green-dot.png",
+                        scaledSize: new window.google.maps.Size(40, 40),
+                    },
+                    animation: window.google.maps.Animation.BOUNCE,
+                })
+
+                // Save instances
+                setMap(mapInstance)
+                setDirectionsService(directionsServiceInstance)
+                setDirectionsRenderer(directionsRendererInstance)
+                setRestaurantMarker(restaurantMarkerInstance)
+                setCustomerMarker(customerMarkerInstance)
+                setDriverMarker(driverMarkerInstance)
+                setIsLoading(false)
+
+                // Set initial marker positions
+                if (pickupLocation && pickupLocation.coordinates) {
+                    const restaurantLatLng = {
+                        lat: Number.parseFloat(pickupLocation.coordinates.lat) || 0,
+                        lng: Number.parseFloat(pickupLocation.coordinates.lng) || 0,
+                    }
+                    restaurantMarkerInstance.setPosition(restaurantLatLng)
+
+                    // Add info window for restaurant
+                    const restaurantInfoWindow = new window.google.maps.InfoWindow({
+                        content: `<div style="font-weight: bold;">${pickupLocation.address || "Restaurant"}</div>`,
+                    })
+
+                    restaurantMarkerInstance.addListener("click", () => {
+                        restaurantInfoWindow.open(mapInstance, restaurantMarkerInstance)
+                    })
+                }
+
+                if (deliveryLocation && deliveryLocation.coordinates) {
+                    const customerLatLng = {
+                        lat: Number.parseFloat(deliveryLocation.coordinates.lat) || 0,
+                        lng: Number.parseFloat(deliveryLocation.coordinates.lng) || 0,
+                    }
+                    customerMarkerInstance.setPosition(customerLatLng)
+
+                    // Add info window for customer
+                    const customerInfoWindow = new window.google.maps.InfoWindow({
+                        content: `<div style="font-weight: bold;">${deliveryLocation.address || "Customer"}</div>`,
+                    })
+
+                    customerMarkerInstance.addListener("click", () => {
+                        customerInfoWindow.open(mapInstance, customerMarkerInstance)
+                    })
+                }
+
+                // Set bounds to include both markers
+                if (pickupLocation && deliveryLocation) {
+                    const bounds = new window.google.maps.LatLngBounds()
+
+                    if (pickupLocation.coordinates) {
+                        bounds.extend({
+                            lat: Number.parseFloat(pickupLocation.coordinates.lat) || 0,
+                            lng: Number.parseFloat(pickupLocation.coordinates.lng) || 0,
+                        })
+                    }
+
+                    if (deliveryLocation.coordinates) {
+                        bounds.extend({
+                            lat: Number.parseFloat(deliveryLocation.coordinates.lat) || 0,
+                            lng: Number.parseFloat(deliveryLocation.coordinates.lng) || 0,
+                        })
+                    }
+
+                    mapInstance.fitBounds(bounds)
+                }
+            } catch (error) {
+                console.error("Error initializing Google Maps:", error)
+                toast.error("Failed to load maps. Please try again later.")
+                setIsLoading(false)
+            }
+        }
+
+        loadGoogleMaps()
+
         return () => {
-            if (mapInstanceRef.current) {
-                mapInstanceRef.current.remove()
-                mapInstanceRef.current = null
+            // Clean up intervals on unmount
+            if (locationUpdateInterval.current) {
+                clearInterval(locationUpdateInterval.current)
+            }
+            if (simulationInterval.current) {
+                clearInterval(simulationInterval.current)
             }
         }
     }, [])
 
-    // Initialize Socket.io connection
+    // Update driver location and calculate route
     useEffect(() => {
-        if (!deliveryId) return
+        if (!map || !driverMarker || !directionsService || !directionsRenderer) return
 
-        // Get token from localStorage or cookies
-        const token =
-            localStorage.getItem("token") || document.cookie.replace(/(?:(?:^|.*;\s*)token\s*=\s*([^;]*).*$)|^.*$/, "$1")
-
-        // Create socket connection
-        const socket = io(process.env.NEXT_PUBLIC_DELIVERY_SERVICE_URL || "http://localhost:5003", {
-            auth: { token },
-            query: { token },
-        })
-
-        // Socket event handlers
-        socket.on("connect", () => {
-            console.log("Socket connected")
-            setIsSocketConnected(true)
-
-            // Join delivery tracking room
-            socket.emit("trackDelivery", deliveryId)
-        })
-
-        socket.on("disconnect", () => {
-            console.log("Socket disconnected")
-            setIsSocketConnected(false)
-        })
-
-        socket.on("locationUpdate", (data) => {
-            if (data.deliveryId === deliveryId) {
-                updateDeliveryMarker(data.location, data.heading)
-            }
-        })
-
-        socket.on("connect_error", (error) => {
-            console.error("Socket connection error:", error)
-            toast.error("Failed to connect to tracking service")
-        })
-
-        // Save socket reference
-        socketRef.current = socket
-
-        // Cleanup
-        return () => {
-            if (socketRef.current) {
-                socketRef.current.emit("stopTracking", deliveryId)
-                socketRef.current.disconnect()
-                socketRef.current = null
-            }
-        }
-    }, [deliveryId])
-
-    // Watch current location if delivery person
-    useEffect(() => {
-        if (!isDeliveryPerson || !isMapReady) return
-
-        // Start watching position
-        const id = navigator.geolocation.watchPosition(
-            (position) => {
-                const { latitude, longitude, heading, speed } = position.coords
-                const newLocation = { lat: latitude, lng: longitude }
-
-                setCurrentLocation(newLocation)
-
-                // Update location in the backend
-                updateLocation(latitude, longitude, null, heading, speed)
-                    .then(() => {
-                        onLocationUpdate(newLocation)
-                        updateDeliveryMarker(newLocation, heading)
-                    })
-                    .catch((error) => {
-                        console.error("Failed to update location:", error)
-                    })
-            },
-            (error) => {
-                console.error("Geolocation error:", error)
-                toast.error("Unable to access your location. Please enable location services.")
-            },
-            {
-                enableHighAccuracy: true,
-                maximumAge: 10000,
-                timeout: 5000,
-            },
-        )
-
-        watchIdRef.current = id
-
-        // Cleanup
-        return () => {
-            if (watchIdRef.current) {
-                navigator.geolocation.clearWatch(watchIdRef.current)
-                watchIdRef.current = null
-            }
-        }
-    }, [isDeliveryPerson, isMapReady, onLocationUpdate])
-
-    // Update delivery marker position
-    const updateDeliveryMarker = useCallback((location, heading = 0) => {
-        if (!mapInstanceRef.current) return
-
-        const { lat, lng } = location
-
-        // Create or update marker
-        if (!markerRef.current) {
-            // Create new marker
-            markerRef.current = L.marker([lat, lng], {
-                icon: createDeliveryIcon(),
-            }).addTo(mapInstanceRef.current)
-        } else {
-            // Update existing marker
-            markerRef.current.setLatLng([lat, lng])
-        }
-
-        // Rotate marker based on heading if needed
-        if (markerRef.current.getElement()) {
-            const iconElement = markerRef.current.getElement().querySelector(".delivery-marker-icon")
-            if (iconElement) {
-                iconElement.style.transform = `rotate(${heading}deg)`
-            }
-        }
-
-        // Center map on marker
-        mapInstanceRef.current.panTo([lat, lng])
-    }, [])
-
-    // Calculate and display route
-    useEffect(() => {
-        if (!isMapReady || !mapInstanceRef.current || !pickupLocation || !deliveryLocation) return
-
-        // Clear existing routing control
-        if (routingControlRef.current) {
-            mapInstanceRef.current.removeControl(routingControlRef.current)
-            routingControlRef.current = null
-        }
-
-        // Get coordinates
-        const pickupCoords = pickupLocation.coordinates
-            ? [pickupLocation.coordinates.lat, pickupLocation.coordinates.lng]
-            : null
-
-        const deliveryCoords = deliveryLocation.coordinates
-            ? [deliveryLocation.coordinates.lat, deliveryLocation.coordinates.lng]
-            : null
-
-        // If we don't have coordinates, try geocoding the addresses
-        if (!pickupCoords || !deliveryCoords) {
-            // For simplicity, we'll just show markers at default positions
-            // In a real app, you would use a geocoding service
-            console.warn("Missing coordinates for routing")
-            return
-        }
-
-        // Create waypoints
-        const waypoints = [L.latLng(pickupCoords), L.latLng(deliveryCoords)]
-
-        // Add current location as waypoint if available
+        // If current location is provided, update driver marker
         if (currentLocation) {
-            waypoints.splice(1, 0, L.latLng(currentLocation.lat, currentLocation.lng))
+            const driverLatLng = {
+                lat: Number.parseFloat(currentLocation.lat) || 0,
+                lng: Number.parseFloat(currentLocation.lng) || 0,
+            }
+            driverMarker.setPosition(driverLatLng)
+            driverMarker.setVisible(true)
+
+            // Calculate and display route based on the current mode
+            calculateRoute(driverLatLng)
+
+            // If we're the delivery person, update our location on the server
+            if (isDeliveryPerson && deliveryId) {
+                updateDeliveryPersonLocation(driverLatLng)
+            }
+        } else if (!isDeliveryPerson && deliveryId) {
+            // If we're the customer, fetch delivery person's location
+            startLocationTracking()
+        } else {
+            driverMarker.setVisible(false)
+
+            // If no driver location, just show route between restaurant and customer
+            calculateRestaurantToCustomerRoute()
+        }
+    }, [
+        currentLocation,
+        map,
+        driverMarker,
+        directionsService,
+        directionsRenderer,
+        routeMode,
+        isDeliveryPerson,
+        deliveryId,
+    ])
+
+    // Calculate route based on current mode
+    const calculateRoute = (driverLocation) => {
+        if (!directionsService || !directionsRenderer || !driverLocation) return
+
+        // For pickup mode, route is from driver to restaurant
+        // For delivery mode, route is from driver to customer
+        const origin = driverLocation
+
+        let destination
+        if (routeMode === "pickup") {
+            // Route to restaurant
+            if (!pickupLocation || !pickupLocation.coordinates) return
+
+            destination = {
+                lat: Number.parseFloat(pickupLocation.coordinates.lat) || 0,
+                lng: Number.parseFloat(pickupLocation.coordinates.lng) || 0,
+            }
+
+            // Check if we're close to the restaurant, switch to delivery mode
+            const distance = calculateDistance(origin, destination)
+            if (distance < 0.1) {
+                // Less than 100 meters
+                setRouteMode("delivery")
+                return
+            }
+        } else {
+            // Route to customer
+            if (!deliveryLocation || !deliveryLocation.coordinates) return
+
+            destination = {
+                lat: Number.parseFloat(deliveryLocation.coordinates.lat) || 0,
+                lng: Number.parseFloat(deliveryLocation.coordinates.lng) || 0,
+            }
         }
 
-        // Create routing control
-        routingControlRef.current = L.Routing.control({
-            waypoints,
-            routeWhileDragging: false,
-            showAlternatives: false,
-            fitSelectedRoutes: true,
-            lineOptions: {
-                styles: [
-                    { color: "#6366F1", opacity: 0.8, weight: 6 },
-                    { color: "#818CF8", opacity: 0.9, weight: 4 },
-                ],
+        directionsService.route(
+            {
+                origin,
+                destination,
+                travelMode: window.google.maps.TravelMode.DRIVING,
             },
-            createMarker: (i, waypoint, n) => {
-                // Custom markers for pickup and delivery
-                if (i === 0) {
-                    return L.marker(waypoint.latLng, {
-                        icon: L.divIcon({
-                            html: `<div class="pickup-marker">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#10B981" width="24" height="24">
-                        <path d="M18.364 17.364L12 23.728l-6.364-6.364a9 9 0 1 1 12.728 0zM12 15a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0-2a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/>
-                      </svg>
-                    </div>`,
-                            className: "",
-                            iconSize: [24, 24],
-                            iconAnchor: [12, 24],
-                        }),
-                    }).bindPopup("Pickup Location")
-                } else if (i === n - 1) {
-                    return L.marker(waypoint.latLng, {
-                        icon: L.divIcon({
-                            html: `<div class="delivery-marker">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#EF4444" width="24" height="24">
-                        <path d="M18.364 17.364L12 23.728l-6.364-6.364a9 9 0 1 1 12.728 0zM12 15a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0-2a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/>
-                      </svg>
-                    </div>`,
-                            className: "",
-                            iconSize: [24, 24],
-                            iconAnchor: [12, 24],
-                        }),
-                    }).bindPopup("Delivery Location")
+            (result, status) => {
+                if (status === "OK") {
+                    directionsRenderer.setDirections(result)
+
+                    // Extract estimated time
+                    if (result.routes && result.routes[0] && result.routes[0].legs && result.routes[0].legs[0]) {
+                        setEstimatedTime(result.routes[0].legs[0].duration.text)
+
+                        // Store route points for simulation
+                        if (!isDeliveryPerson && !locationUpdateInterval.current) {
+                            const path = result.routes[0].overview_path
+                            routePoints.current = path.map((point) => ({
+                                lat: point.lat(),
+                                lng: point.lng(),
+                            }))
+
+                            // Store original ETA in minutes
+                            originalEta.current = result.routes[0].legs[0].duration.value / 60
+
+                            // Start simulation if we have route points
+                            if (routePoints.current.length > 0) {
+                                startSimulation()
+                            }
+                        }
+                    }
                 } else {
-                    // Don't create a marker for current location, we'll use our custom one
-                    return null
+                    console.error("Directions request failed:", status)
                 }
             },
-        }).addTo(mapInstanceRef.current)
+        )
+    }
 
-        // Hide the itinerary
-        routingControlRef.current.on("routesfound", () => {
-            const container = document.querySelector(".leaflet-routing-container")
-            if (container) {
-                container.style.display = "none"
+    // Calculate route between restaurant and customer
+    const calculateRestaurantToCustomerRoute = () => {
+        if (!directionsService || !directionsRenderer || !pickupLocation || !deliveryLocation) return
+
+        const origin = pickupLocation.coordinates
+            ? {
+                lat: Number.parseFloat(pickupLocation.coordinates.lat) || 0,
+                lng: Number.parseFloat(pickupLocation.coordinates.lng) || 0,
             }
-        })
+            : null
 
-        // Cleanup
-        return () => {
-            if (routingControlRef.current && mapInstanceRef.current) {
-                mapInstanceRef.current.removeControl(routingControlRef.current)
-                routingControlRef.current = null
+        const destination = deliveryLocation.coordinates
+            ? {
+                lat: Number.parseFloat(deliveryLocation.coordinates.lat) || 0,
+                lng: Number.parseFloat(deliveryLocation.coordinates.lng) || 0,
+            }
+            : null
+
+        if (!origin || !destination) return
+
+        directionsService.route(
+            {
+                origin,
+                destination,
+                travelMode: window.google.maps.TravelMode.DRIVING,
+            },
+            (result, status) => {
+                if (status === "OK") {
+                    directionsRenderer.setDirections(result)
+
+                    // Extract estimated time and route points for simulation
+                    if (result.routes && result.routes[0] && result.routes[0].legs && result.routes[0].legs[0]) {
+                        setEstimatedTime(result.routes[0].legs[0].duration.text)
+
+                        // Store route points for simulation
+                        const path = result.routes[0].overview_path
+                        routePoints.current = path.map((point) => ({
+                            lat: point.lat(),
+                            lng: point.lng(),
+                        }))
+
+                        // Store original ETA in minutes
+                        originalEta.current = result.routes[0].legs[0].duration.value / 60
+
+                        // Start simulation if we have route points
+                        if (routePoints.current.length > 0) {
+                            startSimulation()
+                        }
+                    }
+                } else {
+                    console.error("Directions request failed:", status)
+                }
+            },
+        )
+    }
+
+    // Start simulation of delivery person moving along the route
+    const startSimulation = () => {
+        // Clear any existing simulation
+        if (simulationInterval.current) {
+            clearInterval(simulationInterval.current)
+        }
+
+        // Reset index
+        currentPointIndex.current = 0
+
+        // Set driver marker at starting position
+        if (driverMarker && routePoints.current.length > 0) {
+            driverMarker.setPosition(routePoints.current[0])
+            driverMarker.setVisible(true)
+        }
+
+        // Update position every 2 seconds
+        simulationInterval.current = setInterval(() => {
+            // Move to next point
+            currentPointIndex.current += 1
+
+            // If we reached the end, stop simulation
+            if (currentPointIndex.current >= routePoints.current.length) {
+                clearInterval(simulationInterval.current)
+                return
+            }
+
+            // Update driver position
+            if (driverMarker) {
+                const newPosition = routePoints.current[currentPointIndex.current]
+                driverMarker.setPosition(newPosition)
+
+                // Update estimated time based on progress
+                if (originalEta.current) {
+                    const progress = currentPointIndex.current / routePoints.current.length
+                    const remainingMinutes = Math.round(originalEta.current * (1 - progress))
+
+                    if (remainingMinutes <= 1) {
+                        setEstimatedTime("1 min")
+                    } else {
+                        setEstimatedTime(`${remainingMinutes} mins`)
+                    }
+                }
+            }
+        }, 2000)
+    }
+
+    // Calculate distance between two points in km
+    const calculateDistance = (point1, point2) => {
+        const R = 6371 // Radius of the earth in km
+        const dLat = deg2rad(point2.lat - point1.lat)
+        const dLng = deg2rad(point2.lng - point1.lng)
+        const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(deg2rad(point1.lat)) * Math.cos(deg2rad(point2.lat)) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        const distance = R * c // Distance in km
+        return distance
+    }
+
+    const deg2rad = (deg) => {
+        return deg * (Math.PI / 180)
+    }
+
+    // Update delivery person's location on the server
+    const updateDeliveryPersonLocation = async (location) => {
+        try {
+            await fetch(`http://localhost:5003/api/deliveries/${deliveryId}/location`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                credentials: "include",
+                body: JSON.stringify({
+                    lat: location.lat,
+                    lng: location.lng,
+                }),
+            })
+        } catch (error) {
+            console.error("Error updating location:", error)
+        }
+    }
+
+    // Start tracking delivery person's location
+    const startLocationTracking = () => {
+        // Clear any existing interval
+        if (locationUpdateInterval.current) {
+            clearInterval(locationUpdateInterval.current)
+        }
+
+        // Set up polling to fetch delivery person's location
+        const fetchDeliveryPersonLocation = async () => {
+            try {
+                const response = await fetch(`http://localhost:5003/api/deliveries/${deliveryId}/location`, {
+                    credentials: "include",
+                })
+
+                if (response.ok) {
+                    const data = await response.json()
+
+                    if (data && data.currentLocation) {
+                        const driverLatLng = {
+                            lat: Number.parseFloat(data.currentLocation.lat) || 0,
+                            lng: Number.parseFloat(data.currentLocation.lng) || 0,
+                        }
+
+                        if (driverMarker) {
+                            driverMarker.setPosition(driverLatLng)
+                            driverMarker.setVisible(true)
+
+                            // Calculate route based on delivery status
+                            if (data.status === "PICKED_UP" || data.status === "IN_TRANSIT") {
+                                setRouteMode("delivery")
+                            } else {
+                                setRouteMode("pickup")
+                            }
+
+                            calculateRoute(driverLatLng)
+                        }
+
+                        // Update estimated time if we have the driver's location
+                        if (data.estimatedArrivalTime) {
+                            setEstimatedTime(data.estimatedArrivalTime)
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Error fetching delivery person location:", error)
             }
         }
-    }, [isMapReady, pickupLocation, deliveryLocation, currentLocation])
+
+        // Fetch immediately and then set interval
+        fetchDeliveryPersonLocation()
+        locationUpdateInterval.current = setInterval(fetchDeliveryPersonLocation, 10000) // Every 10 seconds
+    }
+
+    // Toggle between pickup and delivery routes
+    const toggleRouteMode = () => {
+        setRouteMode((prev) => (prev === "pickup" ? "delivery" : "pickup"))
+    }
 
     return (
-        <div className={`${className} relative rounded-lg overflow-hidden border border-gray-200`}>
-            <div ref={mapRef} className="w-full h-full min-h-[300px]" />
+        <div className={className}>
+            <div className="relative w-full h-full">
+                {isLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100 bg-opacity-50 z-10">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+                    </div>
+                )}
+                <div ref={mapRef} className="w-full h-full rounded-md overflow-hidden"></div>
 
-            {/* Connection status indicator */}
-            <div className="absolute bottom-2 right-2 z-[1000] flex items-center gap-2 bg-white px-3 py-1 rounded-full shadow-md text-xs">
-                <div className={`w-2 h-2 rounded-full ${isSocketConnected ? "bg-green-500" : "bg-red-500"}`}></div>
-                <span>{isSocketConnected ? "Live Tracking" : "Connecting..."}</span>
+                {estimatedTime && (
+                    <Card className="absolute bottom-3 left-3 bg-white shadow-md border-none">
+                        <CardContent className="p-3">
+                            <div className="flex items-center gap-2">
+                                <div className="text-sm">
+                                    <span className="font-medium">ETA: </span>
+                                    <span>{estimatedTime}</span>
+                                </div>
+                                {isDeliveryPerson && (
+                                    <button className="text-xs bg-gray-100 px-2 py-1 rounded hover:bg-gray-200" onClick={toggleRouteMode}>
+                                        {routeMode === "pickup" ? "To Restaurant" : "To Customer"}
+                                    </button>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
-
-            {/* Add custom CSS for markers */}
-            <style jsx global>{`
-        .delivery-marker {
-          position: relative;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        
-        .delivery-marker-icon {
-          width: 36px;
-          height: 36px;
-          background-color: #3B82F6;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-          z-index: 1;
-          transition: transform 0.3s ease;
-        }
-        
-        .delivery-marker-pulse {
-          position: absolute;
-          width: 50px;
-          height: 50px;
-          background-color: rgba(59, 130, 246, 0.4);
-          border-radius: 50%;
-          z-index: 0;
-          animation: pulse 1.5s infinite;
-        }
-        
-        @keyframes pulse {
-          0% {
-            transform: scale(0.5);
-            opacity: 1;
-          }
-          100% {
-            transform: scale(1.5);
-            opacity: 0;
-          }
-        }
-        
-        .pickup-marker, .delivery-marker {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-      `}</style>
         </div>
     )
 }
+
+export default DeliveryMap

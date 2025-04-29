@@ -1,258 +1,220 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Clock, MapPin, Phone, User, Navigation, CheckCircle, AlertCircle } from "lucide-react"
-import DeliveryMap from "@/components/delivery-map"
-import { updateDeliveryStatus, getDeliveryLocation } from "@/lib/delivery-api"
+import { Card, CardContent } from "@/components/ui/card"
+import { MapPin, Navigation, Clock, Truck } from "lucide-react"
 import { toast } from "sonner"
+import DeliveryMap from "@/components/delivery-map"
 
-export default function DeliveryTracker({ delivery, isDeliveryPerson = false, onStatusUpdate = () => { } }) {
-    const [currentLocation, setCurrentLocation] = useState(null)
-    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+const DeliveryTracker = ({ delivery, order }) => {
+    const [currentStep, setCurrentStep] = useState(0)
+    const [estimatedTime, setEstimatedTime] = useState(null)
+    const [deliveryData, setDeliveryData] = useState(null)
+    const [isLoading, setIsLoading] = useState(true)
 
-    // Get initial delivery location
     useEffect(() => {
-        if (!delivery || !delivery._id) return
-
-        const fetchLocation = async () => {
+        const fetchDeliveryData = async () => {
             try {
-                const locationData = await getDeliveryLocation(delivery._id)
-                if (locationData && locationData.location) {
-                    setCurrentLocation(locationData.location)
+                setIsLoading(true)
+
+                // If we already have delivery data from the order
+                if (delivery) {
+                    setDeliveryData(delivery)
+                    determineCurrentStep(delivery)
+                    setIsLoading(false)
+                    return
+                }
+
+                // If we have an order but no delivery data, fetch it
+                if (order && order._id) {
+                    const response = await fetch(`http://localhost:5003/api/deliveries/by-order/${order._id}`, {
+                        credentials: "include",
+                    })
+
+                    if (response.ok) {
+                        const data = await response.json()
+                        setDeliveryData(data)
+                        determineCurrentStep(data)
+                    }
                 }
             } catch (error) {
-                console.error("Error fetching delivery location:", error)
-                // Don't set current location to null if fetch fails to prevent UI flickering
+                console.error("Error fetching delivery data:", error)
+            } finally {
+                setIsLoading(false)
             }
         }
 
-        fetchLocation()
+        fetchDeliveryData()
+    }, [delivery, order])
 
-        // Set up periodic location updates if this is an active delivery
-        let locationInterval = null
-        if (delivery.status === "PICKED_UP" || delivery.status === "IN_TRANSIT") {
-            locationInterval = setInterval(fetchLocation, 15000) // Update every 15 seconds
+    // Determine the current step based on delivery status
+    const determineCurrentStep = (deliveryData) => {
+        if (!deliveryData) return 0
+
+        const statusMap = {
+            PENDING: 0,
+            ASSIGNED: 1,
+            PICKED_UP: 2,
+            IN_TRANSIT: 2,
+            DELIVERED: 3,
+            CANCELLED: -1,
         }
 
-        return () => {
-            if (locationInterval) {
-                clearInterval(locationInterval)
-            }
-        }
-    }, [delivery])
-
-    const handleLocationUpdate = (location) => {
-        setCurrentLocation(location)
+        setCurrentStep(statusMap[deliveryData.status] || 0)
     }
 
-    const handleStatusUpdate = async (newStatus) => {
-        if (!delivery || !delivery._id) return
-
-        setIsUpdatingStatus(true)
-        try {
-            await updateDeliveryStatus(delivery._id, newStatus)
-            toast.success(`Delivery status updated to ${newStatus.replace(/_/g, " ")}`)
-            onStatusUpdate(newStatus)
-        } catch (error) {
-            console.error("Error updating delivery status:", error)
-            toast.error("Failed to update delivery status")
-        } finally {
-            setIsUpdatingStatus(false)
+    // Handle view tracking button click
+    const handleViewTracking = () => {
+        if (deliveryData && deliveryData._id) {
+            window.location.href = `/dashboard/user/${deliveryData._id}/track`
+        } else {
+            toast.error("Tracking information is not available yet")
         }
     }
 
-    if (!delivery) {
+    if (isLoading) {
         return (
-            <Card>
-                <CardContent className="p-6 flex flex-col items-center justify-center min-h-[400px]">
-                    <AlertCircle className="h-12 w-12 text-gray-400 mb-4" />
-                    <p className="text-lg font-medium text-gray-700">No active delivery selected</p>
-                    <p className="text-sm text-gray-500 text-center mt-2">
-                        Select an active delivery from the list to view details and track progress
-                    </p>
-                </CardContent>
-            </Card>
+            <div className="flex items-center justify-center p-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500"></div>
+            </div>
         )
     }
 
-    const getStatusBadgeColor = (status) => {
-        switch (status) {
-            case "PENDING_ASSIGNMENT":
-                return "bg-gray-100 text-gray-700"
-            case "ASSIGNED":
-                return "bg-blue-100 text-blue-700"
-            case "PICKED_UP":
-                return "bg-amber-100 text-amber-700"
-            case "IN_TRANSIT":
-                return "bg-purple-100 text-purple-700"
-            case "DELIVERED":
-                return "bg-green-100 text-green-700"
-            case "CANCELLED":
-            case "FAILED":
-                return "bg-red-100 text-red-700"
-            default:
-                return "bg-gray-100 text-gray-700"
-        }
-    }
-
-    const getNextStatusOptions = () => {
-        switch (delivery.status) {
-            case "ASSIGNED":
-                return [
-                    { value: "PICKED_UP", label: "Picked Up", color: "bg-amber-500 hover:bg-amber-600" },
-                    { value: "CANCELLED", label: "Cancel", color: "bg-red-500 hover:bg-red-600" },
-                ]
-            case "PICKED_UP":
-                return [
-                    { value: "IN_TRANSIT", label: "In Transit", color: "bg-purple-500 hover:bg-purple-600" },
-                    { value: "CANCELLED", label: "Cancel", color: "bg-red-500 hover:bg-red-600" },
-                ]
-            case "IN_TRANSIT":
-                return [
-                    { value: "DELIVERED", label: "Delivered", color: "bg-green-500 hover:bg-green-600" },
-                    { value: "FAILED", label: "Failed", color: "bg-red-500 hover:bg-red-600" },
-                ]
-            default:
-                return []
-        }
+    if (!deliveryData && !order) {
+        return (
+            <div className="text-center py-6">
+                <Truck className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500">No delivery information available yet</p>
+            </div>
+        )
     }
 
     return (
-        <Card className="border-none shadow-md">
-            <CardHeader className="pb-2">
-                <div className="flex justify-between items-center">
-                    <CardTitle>Delivery Tracker</CardTitle>
-                    <Badge className={getStatusBadgeColor(delivery.status)}>{delivery.status.replace(/_/g, " ")}</Badge>
-                </div>
-                <CardDescription>
-                    Order #{delivery.order_id?.substring(0, 6) || "Unknown"} • {new Date(delivery.createdAt).toLocaleString()}
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="p-4 space-y-4">
-                {/* Map */}
-                <DeliveryMap
-                    deliveryId={delivery._id}
-                    pickupLocation={delivery.pickup_location}
-                    deliveryLocation={delivery.delivery_location}
-                    isDeliveryPerson={isDeliveryPerson}
-                    onLocationUpdate={handleLocationUpdate}
-                    className="h-[300px] w-full mb-4"
-                />
+        <div className="space-y-6">
+            <h3 className="text-lg font-medium">Delivery Status</h3>
 
-                {/* Delivery Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Pickup Location */}
-                    <div className="p-4 bg-blue-50 rounded-lg">
-                        <div className="flex items-start gap-3">
-                            <div className="mt-1">
-                                <MapPin className="h-5 w-5 text-blue-500" />
-                            </div>
-                            <div>
-                                <h3 className="font-medium text-blue-700">Pickup Location</h3>
-                                <p className="text-sm text-gray-600 mt-1">{delivery.pickup_location?.address}</p>
-                                {delivery.restaurant_contact && (
-                                    <div className="mt-2">
-                                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                                            <User className="h-4 w-4" />
-                                            <span>{delivery.restaurant_contact.name}</span>
-                                        </div>
-                                        {delivery.restaurant_contact.phone && (
-                                            <div className="flex items-center gap-2 text-sm text-gray-600 mt-1">
-                                                <Phone className="h-4 w-4" />
-                                                <a href={`tel:${delivery.restaurant_contact.phone}`} className="text-blue-600">
-                                                    {delivery.restaurant_contact.phone}
-                                                </a>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
+            {/* Delivery Progress Steps */}
+            <div className="relative">
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gray-200"></div>
+                <div
+                    className="absolute left-0 top-0 w-1 bg-green-500 transition-all duration-500"
+                    style={{ height: `${(currentStep / 3) * 100}%` }}
+                ></div>
+
+                <div className="space-y-8 relative">
+                    <div className="flex items-start pl-6">
+                        <div
+                            className={`absolute left-0 top-1 h-4 w-4 rounded-full ${currentStep >= 0 ? "bg-green-500" : "bg-gray-300"}`}
+                        ></div>
+                        <div>
+                            <h4 className="font-medium">Order Confirmed</h4>
+                            <p className="text-sm text-gray-500">
+                                {order?.createdAt ? new Date(order.createdAt).toLocaleString() : "Processing"}
+                            </p>
                         </div>
                     </div>
 
-                    {/* Delivery Location */}
-                    <div className="p-4 bg-green-50 rounded-lg">
-                        <div className="flex items-start gap-3">
-                            <div className="mt-1">
-                                <MapPin className="h-5 w-5 text-green-500" />
-                            </div>
-                            <div>
-                                <h3 className="font-medium text-green-700">Delivery Location</h3>
-                                <p className="text-sm text-gray-600 mt-1">{delivery.delivery_location?.address}</p>
-                                {delivery.customer_contact && (
-                                    <div className="mt-2">
-                                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                                            <User className="h-4 w-4" />
-                                            <span>{delivery.customer_contact.name}</span>
-                                        </div>
-                                        {delivery.customer_contact.phone && (
-                                            <div className="flex items-center gap-2 text-sm text-gray-600 mt-1">
-                                                <Phone className="h-4 w-4" />
-                                                <a href={`tel:${delivery.customer_contact.phone}`} className="text-blue-600">
-                                                    {delivery.customer_contact.phone}
-                                                </a>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
+                    <div className="flex items-start pl-6">
+                        <div
+                            className={`absolute left-0 top-1 h-4 w-4 rounded-full ${currentStep >= 1 ? "bg-green-500" : "bg-gray-300"}`}
+                        ></div>
+                        <div>
+                            <h4 className="font-medium">Delivery Assigned</h4>
+                            <p className="text-sm text-gray-500">
+                                {deliveryData?.assigned_at ? new Date(deliveryData.assigned_at).toLocaleString() : "Waiting for driver"}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-start pl-6">
+                        <div
+                            className={`absolute left-0 top-1 h-4 w-4 rounded-full ${currentStep >= 2 ? "bg-green-500" : "bg-gray-300"}`}
+                        ></div>
+                        <div>
+                            <h4 className="font-medium">On The Way</h4>
+                            <p className="text-sm text-gray-500">
+                                {deliveryData?.picked_up_at ? new Date(deliveryData.picked_up_at).toLocaleString() : "Pending"}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-start pl-6">
+                        <div
+                            className={`absolute left-0 top-1 h-4 w-4 rounded-full ${currentStep >= 3 ? "bg-green-500" : "bg-gray-300"}`}
+                        ></div>
+                        <div>
+                            <h4 className="font-medium">Delivered</h4>
+                            <p className="text-sm text-gray-500">
+                                {deliveryData?.delivered_at ? new Date(deliveryData.delivered_at).toLocaleString() : "Pending"}
+                            </p>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                {/* Delivery Times */}
-                <div className="flex flex-col sm:flex-row gap-4 mt-4">
-                    <div className="flex-1 p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center gap-2">
-                            <Clock className="h-5 w-5 text-gray-500" />
-                            <div>
-                                <p className="text-sm text-gray-600">Estimated Time</p>
-                                <p className="font-medium">{delivery.estimated_delivery_time || 30} minutes</p>
-                            </div>
+            {/* Map Preview */}
+            {deliveryData &&
+                (deliveryData.status === "ASSIGNED" ||
+                    deliveryData.status === "PICKED_UP" ||
+                    deliveryData.status === "IN_TRANSIT") && (
+                    <div className="space-y-4">
+                        <div className="h-[200px] w-full rounded-lg overflow-hidden">
+                            <DeliveryMap
+                                deliveryId={deliveryData._id}
+                                pickupLocation={deliveryData.pickup_location}
+                                deliveryLocation={deliveryData.delivery_location}
+                                className="h-full w-full"
+                            />
                         </div>
-                    </div>
-                    {delivery.actual_delivery_time && (
-                        <div className="flex-1 p-3 bg-gray-50 rounded-lg">
-                            <div className="flex items-center gap-2">
-                                <CheckCircle className="h-5 w-5 text-green-500" />
-                                <div>
-                                    <p className="text-sm text-gray-600">Actual Time</p>
-                                    <p className="font-medium">{delivery.actual_delivery_time} minutes</p>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
 
-                {/* Special Instructions */}
-                {delivery.special_instructions && (
-                    <div className="p-4 bg-amber-50 rounded-lg mt-4">
-                        <h3 className="font-medium text-amber-700">Special Instructions</h3>
-                        <p className="text-sm text-gray-600 mt-1">{delivery.special_instructions}</p>
+                        <Button onClick={handleViewTracking} className="w-full bg-orange-500 hover:bg-orange-600">
+                            <Navigation className="h-4 w-4 mr-2" />
+                            Track Delivery in Real-Time
+                        </Button>
                     </div>
                 )}
-            </CardContent>
 
-            {/* Action Buttons for Delivery Person */}
-            {isDeliveryPerson && getNextStatusOptions().length > 0 && (
-                <CardFooter className="border-t pt-4 flex flex-wrap gap-2">
-                    {getNextStatusOptions().map((option) => (
-                        <Button
-                            key={option.value}
-                            className={option.color}
-                            disabled={isUpdatingStatus}
-                            onClick={() => handleStatusUpdate(option.value)}
-                        >
-                            {option.value === "DELIVERED" && <CheckCircle className="mr-2 h-4 w-4" />}
-                            {option.value === "IN_TRANSIT" && <Navigation className="mr-2 h-4 w-4" />}
-                            {option.label}
-                        </Button>
-                    ))}
-                </CardFooter>
+            {/* Delivery Info */}
+            {deliveryData && (
+                <Card className="bg-gray-50 border-none">
+                    <CardContent className="p-4">
+                        <div className="space-y-3">
+                            <div className="flex items-start gap-2">
+                                <MapPin className="h-5 w-5 text-orange-500 mt-0.5 flex-shrink-0" />
+                                <div>
+                                    <p className="font-medium text-sm">Delivery Address</p>
+                                    <p className="text-sm text-gray-600">{deliveryData.delivery_location?.address}</p>
+                                </div>
+                            </div>
+
+                            {deliveryData.estimated_delivery_time && (
+                                <div className="flex items-start gap-2">
+                                    <Clock className="h-5 w-5 text-orange-500 mt-0.5 flex-shrink-0" />
+                                    <div>
+                                        <p className="font-medium text-sm">Estimated Delivery Time</p>
+                                        <p className="text-sm text-gray-600">
+                                            {new Date(deliveryData.estimated_delivery_time).toLocaleString()}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {deliveryData.delivery_person_name && (
+                                <div className="flex items-start gap-2">
+                                    <Truck className="h-5 w-5 text-orange-500 mt-0.5 flex-shrink-0" />
+                                    <div>
+                                        <p className="font-medium text-sm">Delivery Person</p>
+                                        <p className="text-sm text-gray-600">{deliveryData.delivery_person_name}</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
             )}
-        </Card>
+        </div>
     )
 }
+
+export default DeliveryTracker
