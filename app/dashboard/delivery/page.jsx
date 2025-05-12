@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -45,12 +45,49 @@ export default function DeliveryDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [selectedDelivery, setSelectedDelivery] = useState(null);
+  const [fallbackLocationUsed, setFallbackLocationUsed] = useState(false);
   const [stats, setStats] = useState({
     totalDeliveries: 0,
     completedToday: 0,
     earnings: 0,
     avgRating: 4.8,
   });
+
+  const useFallbackLocation = useCallback(() => {
+    // If we have a selected delivery with pickup location, use a location near it
+    if (
+      selectedDelivery &&
+      selectedDelivery.pickup_location &&
+      selectedDelivery.pickup_location.coordinates
+    ) {
+      const fallbackLat =
+        Number.parseFloat(selectedDelivery.pickup_location.coordinates.lat) +
+        0.01;
+      const fallbackLng =
+        Number.parseFloat(selectedDelivery.pickup_location.coordinates.lng) +
+        0.01;
+
+      setCurrentLocation({
+        lat: fallbackLat,
+        lng: fallbackLng,
+      });
+
+      console.log("Using fallback location near restaurant:", {
+        lat: fallbackLat,
+        lng: fallbackLng,
+      });
+      setFallbackLocationUsed(true);
+      return;
+    }
+
+    // Default fallback to a location (this should be customized based on your service area)
+    setCurrentLocation({
+      lat: 6.9271, // Default to Colombo, Sri Lanka coordinates
+      lng: 79.8612,
+    });
+    console.log("Using default fallback location");
+    setFallbackLocationUsed(true);
+  }, [selectedDelivery, setCurrentLocation]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -75,7 +112,7 @@ export default function DeliveryDashboard() {
 
       return () => clearInterval(refreshInterval);
     }
-  }, [loading, user, router]);
+  }, [loading, user, router, useFallbackLocation]);
 
   // Update the fetchDeliveries function to properly fetch real orders from the backend
   const fetchDeliveries = async (silent = false) => {
@@ -152,9 +189,12 @@ export default function DeliveryDashboard() {
     }
   };
 
+  // Update the startLocationTracking function to handle errors better and provide fallback coordinates
+
   const startLocationTracking = () => {
     if (!navigator.geolocation) {
       toast.error("Geolocation is not supported by your browser");
+      useFallbackLocation();
       return;
     }
 
@@ -170,8 +210,16 @@ export default function DeliveryDashboard() {
       (error) => {
         console.error("Error getting location:", error);
         toast.error(
-          "Failed to get your current location. Please check your device settings."
+          "Using approximate location. Enable location services for better accuracy."
         );
+        if (!fallbackLocationUsed) {
+          useFallbackLocation();
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
       }
     );
 
@@ -191,11 +239,15 @@ export default function DeliveryDashboard() {
       },
       (error) => {
         console.error("Error tracking location:", error);
+        // Don't show repeated errors for watchPosition
+        if (!currentLocation && !fallbackLocationUsed) {
+          useFallbackLocation();
+        }
       },
       {
         enableHighAccuracy: true,
+        timeout: 15000,
         maximumAge: 10000,
-        timeout: 10000,
       }
     );
 
@@ -244,7 +296,6 @@ export default function DeliveryDashboard() {
           },
           credentials: "include",
           body: JSON.stringify({
-            delivery_person_id: user.id,
             delivery_person_name: user.name,
           }),
         }
@@ -255,19 +306,6 @@ export default function DeliveryDashboard() {
       }
 
       const updatedDelivery = await response.json();
-
-      // Update the order status to IN_PROGRESS
-      await fetch(
-        `http://localhost:5002/api/orders/${delivery.order_id}/status`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({ status: "OUT_FOR_DELIVERY" }),
-        }
-      );
 
       toast.success("Delivery accepted!");
 

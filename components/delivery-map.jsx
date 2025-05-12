@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 
@@ -30,6 +30,37 @@ const DeliveryMap = ({
   const routePoints = useRef([]);
   const currentPointIndex = useRef(0);
   const originalEta = useRef(null);
+  const [fallbackLocationUsed, setFallbackLocationUsed] = useState(false);
+
+  // Add a function to use fallback location when geolocation fails
+  const useFallbackLocation = useCallback(() => {
+    setFallbackLocationUsed(true);
+    // If we have pickup location, use a location near it
+    if (pickupLocation && pickupLocation.coordinates) {
+      const fallbackLat =
+        Number.parseFloat(pickupLocation.coordinates.lat) + 0.01;
+      const fallbackLng =
+        Number.parseFloat(pickupLocation.coordinates.lng) + 0.01;
+
+      setCurrentLocation({
+        lat: fallbackLat,
+        lng: fallbackLng,
+      });
+
+      console.log("Using fallback location near restaurant:", {
+        lat: fallbackLat,
+        lng: fallbackLng,
+      });
+      return;
+    }
+
+    // Default fallback to a location (this should be customized based on your service area)
+    setCurrentLocation({
+      lat: 6.9271, // Default to Colombo, Sri Lanka coordinates
+      lng: 79.8612,
+    });
+    console.log("Using default fallback location");
+  }, [pickupLocation]);
 
   // Initialize Google Maps
   useEffect(() => {
@@ -104,63 +135,102 @@ const DeliveryMap = ({
         setIsLoading(false);
 
         // Set initial marker positions
+        let validCoordinatesFound = false;
+
         if (pickupLocation && pickupLocation.coordinates) {
-          const restaurantLatLng = {
-            lat: Number.parseFloat(pickupLocation.coordinates.lat) || 0,
-            lng: Number.parseFloat(pickupLocation.coordinates.lng) || 0,
-          };
-          restaurantMarkerInstance.setPosition(restaurantLatLng);
+          const restaurantLat =
+            Number.parseFloat(pickupLocation.coordinates.lat) || 0;
+          const restaurantLng =
+            Number.parseFloat(pickupLocation.coordinates.lng) || 0;
 
-          // Add info window for restaurant
-          const restaurantInfoWindow = new window.google.maps.InfoWindow({
-            content: `<div style="font-weight: bold;">${
-              pickupLocation.address || "Restaurant"
-            }</div>`,
-          });
+          if (
+            Math.abs(restaurantLat) > 0.001 ||
+            Math.abs(restaurantLng) > 0.001
+          ) {
+            const restaurantLatLng = { lat: restaurantLat, lng: restaurantLng };
+            restaurantMarkerInstance.setPosition(restaurantLatLng);
+            validCoordinatesFound = true;
 
-          restaurantMarkerInstance.addListener("click", () => {
-            restaurantInfoWindow.open(mapInstance, restaurantMarkerInstance);
-          });
+            // Add info window for restaurant
+            const restaurantInfoWindow = new window.google.maps.InfoWindow({
+              content: `<div style="font-weight: bold;">${
+                pickupLocation.address || "Restaurant"
+              }</div>`,
+            });
+
+            restaurantMarkerInstance.addListener("click", () => {
+              restaurantInfoWindow.open(mapInstance, restaurantMarkerInstance);
+            });
+          } else {
+            console.warn(
+              "Invalid restaurant coordinates:",
+              pickupLocation.coordinates
+            );
+          }
         }
 
         if (deliveryLocation && deliveryLocation.coordinates) {
-          const customerLatLng = {
-            lat: Number.parseFloat(deliveryLocation.coordinates.lat) || 0,
-            lng: Number.parseFloat(deliveryLocation.coordinates.lng) || 0,
-          };
-          customerMarkerInstance.setPosition(customerLatLng);
+          const customerLat =
+            Number.parseFloat(deliveryLocation.coordinates.lat) || 0;
+          const customerLng =
+            Number.parseFloat(deliveryLocation.coordinates.lng) || 0;
 
-          // Add info window for customer
-          const customerInfoWindow = new window.google.maps.InfoWindow({
-            content: `<div style="font-weight: bold;">${
-              deliveryLocation.address || "Customer"
-            }</div>`,
-          });
+          if (Math.abs(customerLat) > 0.001 || Math.abs(customerLng) > 0.001) {
+            const customerLatLng = { lat: customerLat, lng: customerLng };
+            customerMarkerInstance.setPosition(customerLatLng);
+            validCoordinatesFound = true;
 
-          customerMarkerInstance.addListener("click", () => {
-            customerInfoWindow.open(mapInstance, customerMarkerInstance);
-          });
+            // Add info window for customer
+            const customerInfoWindow = new window.google.maps.InfoWindow({
+              content: `<div style="font-weight: bold;">${
+                deliveryLocation.address || "Customer"
+              }</div>`,
+            });
+
+            customerMarkerInstance.addListener("click", () => {
+              customerInfoWindow.open(mapInstance, customerMarkerInstance);
+            });
+          } else {
+            console.warn(
+              "Invalid customer coordinates:",
+              deliveryLocation.coordinates
+            );
+          }
         }
 
         // Set bounds to include both markers
-        if (pickupLocation && deliveryLocation) {
+        if (validCoordinatesFound) {
           const bounds = new window.google.maps.LatLngBounds();
 
-          if (pickupLocation.coordinates) {
-            bounds.extend({
-              lat: Number.parseFloat(pickupLocation.coordinates.lat) || 0,
-              lng: Number.parseFloat(pickupLocation.coordinates.lng) || 0,
-            });
+          if (pickupLocation && pickupLocation.coordinates) {
+            const lat = Number.parseFloat(pickupLocation.coordinates.lat) || 0;
+            const lng = Number.parseFloat(pickupLocation.coordinates.lng) || 0;
+
+            if (Math.abs(lat) > 0.001 || Math.abs(lng) > 0.001) {
+              bounds.extend({ lat, lng });
+            }
           }
 
-          if (deliveryLocation.coordinates) {
-            bounds.extend({
-              lat: Number.parseFloat(deliveryLocation.coordinates.lat) || 0,
-              lng: Number.parseFloat(deliveryLocation.coordinates.lng) || 0,
-            });
+          if (deliveryLocation && deliveryLocation.coordinates) {
+            const lat =
+              Number.parseFloat(deliveryLocation.coordinates.lat) || 0;
+            const lng =
+              Number.parseFloat(deliveryLocation.coordinates.lng) || 0;
+
+            if (Math.abs(lat) > 0.001 || Math.abs(lng) > 0.001) {
+              bounds.extend({ lat, lng });
+            }
           }
 
-          mapInstance.fitBounds(bounds);
+          if (!bounds.isEmpty()) {
+            mapInstance.fitBounds(bounds);
+          } else {
+            // Default center if no valid bounds
+            mapInstance.setCenter({ lat: 6.9271, lng: 79.8612 }); // Colombo, Sri Lanka
+          }
+        } else {
+          // Default center if no valid coordinates
+          mapInstance.setCenter({ lat: 6.9271, lng: 79.8612 }); // Colombo, Sri Lanka
         }
       } catch (error) {
         console.error("Error initializing Google Maps:", error);
@@ -180,7 +250,7 @@ const DeliveryMap = ({
         clearInterval(simulationInterval.current);
       }
     };
-  }, []);
+  }, [pickupLocation, deliveryLocation, useFallbackLocation]);
 
   // Update driver location and calculate route
   useEffect(() => {
@@ -258,6 +328,24 @@ const DeliveryMap = ({
       };
     }
 
+    // Validate coordinates to prevent ZERO_RESULTS
+    if (Math.abs(origin.lat) < 0.001 && Math.abs(origin.lng) < 0.001) {
+      console.warn("Invalid origin coordinates, using fallback");
+      // Use a fallback location near the destination
+      origin.lat = destination.lat + 0.01;
+      origin.lng = destination.lng + 0.01;
+    }
+
+    if (
+      Math.abs(destination.lat) < 0.001 &&
+      Math.abs(destination.lng) < 0.001
+    ) {
+      console.warn("Invalid destination coordinates, cannot calculate route");
+      return;
+    }
+
+    console.log("Calculating route from", origin, "to", destination);
+
     directionsService.route(
       {
         origin,
@@ -297,9 +385,39 @@ const DeliveryMap = ({
           }
         } else {
           console.error("Directions request failed:", status);
+
+          // If we get ZERO_RESULTS, try to show a straight line between points
+          if (status === "ZERO_RESULTS") {
+            console.log("Falling back to straight line path");
+            showStraightLinePath(origin, destination);
+          }
+
+          // Set a default estimated time
+          setEstimatedTime("~30 min");
         }
       }
     );
+  };
+
+  // Add a new function to show a straight line path when directions fail
+  const showStraightLinePath = (origin, destination) => {
+    if (!map) return;
+
+    // Clear existing directions
+    directionsRenderer.setDirections({ routes: [] });
+
+    // Create a polyline for a straight path
+    const straightPath = new window.google.maps.Polyline({
+      path: [origin, destination],
+      geodesic: true,
+      strokeColor: "#FF5722",
+      strokeOpacity: 0.7,
+      strokeWeight: 3,
+      map: map,
+    });
+
+    // Store for cleanup
+    return straightPath;
   };
 
   // Calculate route between restaurant and customer
@@ -465,6 +583,7 @@ const DeliveryMap = ({
   const startLocationTracking = () => {
     if (!navigator.geolocation) {
       toast.error("Geolocation is not supported by your browser");
+      useFallbackLocation();
       return;
     }
 
@@ -480,8 +599,14 @@ const DeliveryMap = ({
       (error) => {
         console.error("Error getting location:", error);
         toast.error(
-          "Failed to get your current location. Please check your device settings."
+          "Using approximate location. Enable location services for better accuracy."
         );
+        useFallbackLocation();
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
       }
     );
 
@@ -501,11 +626,15 @@ const DeliveryMap = ({
       },
       (error) => {
         console.error("Error tracking location:", error);
+        // Don't show repeated errors for watchPosition
+        if (!currentLocation && !fallbackLocationUsed) {
+          useFallbackLocation();
+        }
       },
       {
         enableHighAccuracy: true,
+        timeout: 15000,
         maximumAge: 10000,
-        timeout: 10000,
       }
     );
 
@@ -599,7 +728,7 @@ const DeliveryMap = ({
     } else if (deliveryId) {
       startLocationTrackingCustomer();
     }
-  }, [isDeliveryPerson, deliveryId]);
+  }, [isDeliveryPerson, deliveryId, useFallbackLocation]);
 
   // Toggle between pickup and delivery routes
   const toggleRouteMode = () => {
