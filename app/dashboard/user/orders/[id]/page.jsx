@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { use } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,8 @@ import DeliveryMap from "@/components/delivery-map";
 import { getDeliveryByOrderId } from "@/lib/delivery-api";
 
 export default function OrderDetailsPage({ params }) {
-  const { id } = params;
+  const unwrappedParams = use(params);
+  const { id } = unwrappedParams;
   const { user, loading } = useAuth();
   const router = useRouter();
   const [order, setOrder] = useState(null);

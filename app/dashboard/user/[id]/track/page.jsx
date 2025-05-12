@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { use } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,8 @@ import DeliveryMap from "@/components/delivery-map";
 import { toast } from "sonner";
 
 export default function TrackOrderPage({ params }) {
-  const { id } = params;
+  const unwrappedParams = use(params);
+  const { id } = unwrappedParams;
   const { user, loading } = useAuth();
   const router = useRouter();
   const [order, setOrder] = useState(null);
@@ -346,14 +348,14 @@ export default function TrackOrderPage({ params }) {
               </div>
               <Badge
                 className={`${
-                  order.status === "DELIVERED"
+                  order?.status === "DELIVERED"
                     ? "bg-green-100 text-green-800"
-                    : order.status === "CANCELLED"
+                    : order?.status === "CANCELLED"
                     ? "bg-red-100 text-red-800"
                     : "bg-orange-100 text-orange-800"
                 } px-3 py-1 text-sm`}
               >
-                {order.status.replace(/_/g, " ")}
+                {order?.status ? order.status.replace(/_/g, " ") : "Processing"}
               </Badge>
             </div>
           </CardHeader>
@@ -549,7 +551,9 @@ export default function TrackOrderPage({ params }) {
                           Order Status
                         </h4>
                         <p className="text-gray-600">
-                          {order.status.replace(/_/g, " ")}
+                          {order?.status
+                            ? order.status.replace(/_/g, " ")
+                            : "Processing"}
                         </p>
                         {delivery.picked_up_at && (
                           <p className="text-xs text-gray-500">
