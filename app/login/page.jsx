@@ -1,45 +1,66 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { loginUser } from "@/lib/api"
-import { useAuth } from "@/hooks/use-auth"
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Pizza, Coffee, ArrowRight } from "lucide-react"
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { loginUser } from "@/lib/api";
+import { useAuth } from "@/hooks/use-auth";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Pizza, Coffee, ArrowRight } from "lucide-react";
 
 export default function LoginPage() {
-  const [form, setForm] = useState({ email: "", password: "" })
-  const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
-  const router = useRouter()
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [loading, setLoading] = useState(false);
+  const { login, user } = useAuth();
+  const router = useRouter();
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      router.push(
+        user.role === "admin"
+          ? "/dashboard/admin"
+          : user.role === "restaurant_owner"
+          ? "/dashboard/restaurant"
+          : user.role === "delivery_person"
+          ? "/dashboard/delivery"
+          : "/dashboard/user"
+      );
+    }
+  }, [user, router]);
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    setLoading(true)
+    e.preventDefault();
+    setLoading(true);
     try {
-      const data = await loginUser(form)
-      login(data.user)
-      toast.success("Login successful! Getting your menu ready...")
+      const data = await loginUser(form);
+      login(data.user);
+      toast.success("Login successful! Getting your menu ready...");
       // inside handleSubmit
       router.push(
         data.user.role === "admin"
           ? "/dashboard/admin"
           : data.user.role === "restaurant_owner"
-            ? "/dashboard/restaurant"
-            : data.user.role === "delivery_person"
-              ? "/dashboard/delivery"
-              : "/dashboard/user"
-      )
-
+          ? "/dashboard/restaurant"
+          : data.user.role === "delivery_person"
+          ? "/dashboard/delivery"
+          : "/dashboard/user"
+      );
     } catch (err) {
-      toast.error(err.message)
+      toast.error(err.message);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 to-orange-100 p-4">
@@ -54,8 +75,12 @@ export default function LoginPage() {
 
         <Card className="border-none shadow-xl">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-bold text-center">Welcome back</CardTitle>
-            <CardDescription className="text-center">Sign in to order your favorite meals</CardDescription>
+            <CardTitle className="text-2xl font-bold text-center">
+              Welcome back
+            </CardTitle>
+            <CardDescription className="text-center">
+              Sign in to order your favorite meals
+            </CardDescription>
           </CardHeader>
 
           <CardContent>
@@ -66,7 +91,9 @@ export default function LoginPage() {
                     type="email"
                     placeholder="Email"
                     value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    onChange={(e) =>
+                      setForm({ ...form, email: e.target.value })
+                    }
                     required
                     className="pl-10 py-6 bg-gray-50 border-gray-100"
                   />
@@ -80,7 +107,9 @@ export default function LoginPage() {
                     type="password"
                     placeholder="Password"
                     value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    onChange={(e) =>
+                      setForm({ ...form, password: e.target.value })
+                    }
                     required
                     className="pl-10 py-6 bg-gray-50 border-gray-100"
                   />
@@ -125,7 +154,10 @@ export default function LoginPage() {
           <CardFooter className="flex flex-col space-y-4">
             <div className="text-sm text-center text-gray-500">
               Don&apos;t have an account?{" "}
-              <a href="/register" className="text-orange-500 hover:text-orange-600 font-medium">
+              <a
+                href="/register"
+                className="text-orange-500 hover:text-orange-600 font-medium"
+              >
                 Register now
               </a>
             </div>
@@ -189,14 +221,15 @@ export default function LoginPage() {
             </div>
           </CardFooter>
           <div className="text-sm text-center text-gray-500">
-  <a href="/forgot-password" className="text-orange-500 hover:text-orange-600 font-medium">
-    Forgot your password?
-  </a>
-</div>
-
+            <a
+              href="/forgot-password"
+              className="text-orange-500 hover:text-orange-600 font-medium"
+            >
+              Forgot your password?
+            </a>
+          </div>
         </Card>
       </div>
     </div>
-  )
+  );
 }
-
