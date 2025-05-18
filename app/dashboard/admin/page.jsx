@@ -1,14 +1,20 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { useAuth } from "@/hooks/use-auth"
-import { getSystemStats } from "@/lib/restaurant-api"
-import { toast } from "sonner"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/use-auth";
+import { getSystemStats } from "@/lib/restaurant-api";
+import { toast } from "sonner";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Store,
   Users,
@@ -21,41 +27,43 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
-} from "lucide-react"
+  LogOut,
+} from "lucide-react";
+import { logout } from "@/lib/auth";
 
 export default function AdminDashboardPage() {
-  const { user, loading } = useAuth()
-  const router = useRouter()
-  const [isLoading, setIsLoading] = useState(true)
-  const [stats, setStats] = useState(null)
-  const [timeFilter, setTimeFilter] = useState("today")
-  const [activeTab, setActiveTab] = useState("overview")
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState(null);
+  const [timeFilter, setTimeFilter] = useState("today");
+  const [activeTab, setActiveTab] = useState("overview");
 
   useEffect(() => {
     if (!loading && (!user || user.role !== "admin")) {
-      router.push("/")
-      toast.error("You don't have permission to access this page")
+      router.push("/");
+      toast.error("You don't have permission to access this page");
     }
-  }, [user, loading, router])
+  }, [user, loading, router]);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        setIsLoading(true)
-        const data = await getSystemStats()
-        setStats(data)
+        setIsLoading(true);
+        const data = await getSystemStats();
+        setStats(data);
       } catch (error) {
-        toast.error("Failed to fetch system statistics")
-        console.error(error)
+        toast.error("Failed to fetch system statistics");
+        console.error(error);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
+    };
 
     if (user && !loading && user.role === "admin") {
-      fetchStats()
+      fetchStats();
     }
-  }, [user, loading, timeFilter])
+  }, [user, loading, timeFilter]);
 
   // If no stats are available yet, use placeholder data
   const placeholderStats = {
@@ -100,9 +108,19 @@ export default function AdminDashboardPage() {
         { name: "Pasta Paradise", orders: 110 },
       ],
     },
-  }
+  };
 
-  const displayStats = stats || placeholderStats
+  const displayStats = stats || placeholderStats;
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.push("/login");
+      toast.success("Logged out successfully");
+    } catch (error) {
+      toast.error("Failed to logout");
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -166,11 +184,23 @@ export default function AdminDashboardPage() {
               <h1 className="text-2xl font-bold">Admin Dashboard</h1>
               <p className="text-gray-500">System overview and statistics</p>
             </div>
+            <Button
+              variant="outline"
+              className="flex items-center gap-2 text-red-500 border-red-200 hover:bg-red-50"
+              onClick={handleLogout}
+            >
+              <LogOut className="h-4 w-4" />
+              Logout
+            </Button>
           </div>
 
           {/* Time Period Filter */}
           <div className="mb-6">
-            <Tabs defaultValue="today" value={timeFilter} onValueChange={setTimeFilter}>
+            <Tabs
+              defaultValue="today"
+              value={timeFilter}
+              onValueChange={setTimeFilter}
+            >
               <TabsList>
                 <TabsTrigger value="today">Today</TabsTrigger>
                 <TabsTrigger value="week">This Week</TabsTrigger>
@@ -204,9 +234,12 @@ export default function AdminDashboardPage() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-500 text-sm">Total Restaurants</p>
-                      <h3 className="text-2xl font-bold mt-1">{displayStats?.restaurants?.total || 0}</h3>
+                      <h3 className="text-2xl font-bold mt-1">
+                        {displayStats?.restaurants?.total || 0}
+                      </h3>
                       <p className="text-green-500 text-xs mt-1 flex items-center">
-                        <TrendingUp className="h-3 w-3 mr-1" /> +{displayStats?.restaurants?.growth || 0}% from last{" "}
+                        <TrendingUp className="h-3 w-3 mr-1" /> +
+                        {displayStats?.restaurants?.growth || 0}% from last{" "}
                         {timeFilter}
                       </p>
                     </div>
@@ -222,9 +255,12 @@ export default function AdminDashboardPage() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-500 text-sm">Total Orders</p>
-                      <h3 className="text-2xl font-bold mt-1">{displayStats?.orders?.total || 0}</h3>
+                      <h3 className="text-2xl font-bold mt-1">
+                        {displayStats?.orders?.total || 0}
+                      </h3>
                       <p className="text-green-500 text-xs mt-1 flex items-center">
-                        <TrendingUp className="h-3 w-3 mr-1" /> +{displayStats?.orders?.growth || 0}% from last{" "}
+                        <TrendingUp className="h-3 w-3 mr-1" /> +
+                        {displayStats?.orders?.growth || 0}% from last{" "}
                         {timeFilter}
                       </p>
                     </div>
@@ -240,9 +276,12 @@ export default function AdminDashboardPage() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-500 text-sm">Total Users</p>
-                      <h3 className="text-2xl font-bold mt-1">{displayStats?.users?.total || 0}</h3>
+                      <h3 className="text-2xl font-bold mt-1">
+                        {displayStats?.users?.total || 0}
+                      </h3>
                       <p className="text-green-500 text-xs mt-1 flex items-center">
-                        <TrendingUp className="h-3 w-3 mr-1" /> +{displayStats?.users?.growth || 0}% from last{" "}
+                        <TrendingUp className="h-3 w-3 mr-1" /> +
+                        {displayStats?.users?.growth || 0}% from last{" "}
                         {timeFilter}
                       </p>
                     </div>
@@ -258,9 +297,12 @@ export default function AdminDashboardPage() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-gray-500 text-sm">Total Revenue</p>
-                      <h3 className="text-2xl font-bold mt-1">${displayStats?.revenue?.total || 0}</h3>
+                      <h3 className="text-2xl font-bold mt-1">
+                        ${displayStats?.revenue?.total || 0}
+                      </h3>
                       <p className="text-green-500 text-xs mt-1 flex items-center">
-                        <TrendingUp className="h-3 w-3 mr-1" /> +{displayStats?.revenue?.growth || 0}% from last{" "}
+                        <TrendingUp className="h-3 w-3 mr-1" /> +
+                        {displayStats?.revenue?.growth || 0}% from last{" "}
                         {timeFilter}
                       </p>
                     </div>
@@ -281,7 +323,9 @@ export default function AdminDashboardPage() {
               <Card className="border-none shadow-md">
                 <CardHeader className="pb-2">
                   <CardTitle>Restaurant Status</CardTitle>
-                  <CardDescription>Overview of restaurant verification status</CardDescription>
+                  <CardDescription>
+                    Overview of restaurant verification status
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
@@ -291,15 +335,18 @@ export default function AdminDashboardPage() {
                         <p className="text-sm font-medium">
                           {displayStats?.restaurants?.verified || 0} (
                           {Math.round(
-                            ((displayStats?.restaurants?.verified || 0) / (displayStats?.restaurants?.total || 1)) *
-                            100,
+                            ((displayStats?.restaurants?.verified || 0) /
+                              (displayStats?.restaurants?.total || 1)) *
+                              100
                           )}
                           %)
                         </p>
                       </div>
                       <Progress
                         value={Math.round(
-                          ((displayStats?.restaurants?.verified || 0) / (displayStats?.restaurants?.total || 1)) * 100,
+                          ((displayStats?.restaurants?.verified || 0) /
+                            (displayStats?.restaurants?.total || 1)) *
+                            100
                         )}
                         className="h-2"
                       />
@@ -310,14 +357,18 @@ export default function AdminDashboardPage() {
                         <p className="text-sm font-medium">
                           {displayStats?.restaurants?.pending || 0} (
                           {Math.round(
-                            ((displayStats?.restaurants?.pending || 0) / (displayStats?.restaurants?.total || 1)) * 100,
+                            ((displayStats?.restaurants?.pending || 0) /
+                              (displayStats?.restaurants?.total || 1)) *
+                              100
                           )}
                           %)
                         </p>
                       </div>
                       <Progress
                         value={Math.round(
-                          ((displayStats?.restaurants?.pending || 0) / (displayStats?.restaurants?.total || 1)) * 100,
+                          ((displayStats?.restaurants?.pending || 0) /
+                            (displayStats?.restaurants?.total || 1)) *
+                            100
                         )}
                         className="h-2"
                       />
@@ -327,7 +378,9 @@ export default function AdminDashboardPage() {
                       <Button
                         variant="outline"
                         className="flex items-center justify-center gap-2"
-                        onClick={() => router.push("/dashboard/admin/restaurants")}
+                        onClick={() =>
+                          router.push("/dashboard/admin/restaurants")
+                        }
                       >
                         <Store className="h-4 w-4" />
                         View All Restaurants
@@ -335,7 +388,11 @@ export default function AdminDashboardPage() {
                       <Button
                         variant="outline"
                         className="flex items-center justify-center gap-2 text-yellow-600 border-yellow-600 hover:bg-yellow-50"
-                        onClick={() => router.push("/dashboard/admin/restaurants?filter=pending")}
+                        onClick={() =>
+                          router.push(
+                            "/dashboard/admin/restaurants?filter=pending"
+                          )
+                        }
                       >
                         <AlertTriangle className="h-4 w-4" />
                         View Pending Approvals
@@ -349,7 +406,9 @@ export default function AdminDashboardPage() {
               <Card className="border-none shadow-md">
                 <CardHeader className="pb-2">
                   <CardTitle>Order Statistics</CardTitle>
-                  <CardDescription>Overview of order status and metrics</CardDescription>
+                  <CardDescription>
+                    Overview of order status and metrics
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -358,10 +417,14 @@ export default function AdminDashboardPage() {
                         <CheckCircle className="h-5 w-5 text-green-500" />
                         <span className="font-medium">Completed</span>
                       </div>
-                      <p className="text-2xl font-bold">{displayStats?.orders?.completed || 0}</p>
+                      <p className="text-2xl font-bold">
+                        {displayStats?.orders?.completed || 0}
+                      </p>
                       <p className="text-sm text-gray-500">
                         {Math.round(
-                          ((displayStats?.orders?.completed || 0) / (displayStats?.orders?.total || 1)) * 100,
+                          ((displayStats?.orders?.completed || 0) /
+                            (displayStats?.orders?.total || 1)) *
+                            100
                         )}
                         % of total
                       </p>
@@ -372,10 +435,16 @@ export default function AdminDashboardPage() {
                         <Clock className="h-5 w-5 text-yellow-500" />
                         <span className="font-medium">Pending</span>
                       </div>
-                      <p className="text-2xl font-bold">{displayStats?.orders?.pending || 0}</p>
+                      <p className="text-2xl font-bold">
+                        {displayStats?.orders?.pending || 0}
+                      </p>
                       <p className="text-sm text-gray-500">
-                        {Math.round(((displayStats?.orders?.pending || 0) / (displayStats?.orders?.total || 1)) * 100)}%
-                        of total
+                        {Math.round(
+                          ((displayStats?.orders?.pending || 0) /
+                            (displayStats?.orders?.total || 1)) *
+                            100
+                        )}
+                        % of total
                       </p>
                     </div>
 
@@ -384,10 +453,14 @@ export default function AdminDashboardPage() {
                         <XCircle className="h-5 w-5 text-red-500" />
                         <span className="font-medium">Cancelled</span>
                       </div>
-                      <p className="text-2xl font-bold">{displayStats?.orders?.cancelled || 0}</p>
+                      <p className="text-2xl font-bold">
+                        {displayStats?.orders?.cancelled || 0}
+                      </p>
                       <p className="text-sm text-gray-500">
                         {Math.round(
-                          ((displayStats?.orders?.cancelled || 0) / (displayStats?.orders?.total || 1)) * 100,
+                          ((displayStats?.orders?.cancelled || 0) /
+                            (displayStats?.orders?.total || 1)) *
+                            100
                         )}
                         % of total
                       </p>
@@ -397,7 +470,9 @@ export default function AdminDashboardPage() {
                   <div className="pt-4 border-t">
                     <div className="flex justify-between items-center mb-4">
                       <h4 className="font-medium">Average Order Value</h4>
-                      <p className="text-xl font-bold">${displayStats?.revenue?.averageOrderValue || 0}</p>
+                      <p className="text-xl font-bold">
+                        ${displayStats?.revenue?.averageOrderValue || 0}
+                      </p>
                     </div>
 
                     <Button
@@ -423,17 +498,24 @@ export default function AdminDashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {(displayStats?.popular?.cuisines || []).map((cuisine, index) => (
-                      <div key={index} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
-                            <PieChart className="h-4 w-4 text-blue-500" />
+                    {(displayStats?.popular?.cuisines || []).map(
+                      (cuisine, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center">
+                              <PieChart className="h-4 w-4 text-blue-500" />
+                            </div>
+                            <span>{cuisine.name}</span>
                           </div>
-                          <span>{cuisine.name}</span>
+                          <span className="font-medium">
+                            {cuisine.count} orders
+                          </span>
                         </div>
-                        <span className="font-medium">{cuisine.count} orders</span>
-                      </div>
-                    ))}
+                      )
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -442,21 +524,30 @@ export default function AdminDashboardPage() {
               <Card className="border-none shadow-md">
                 <CardHeader className="pb-2">
                   <CardTitle>Top Restaurants</CardTitle>
-                  <CardDescription>Highest performing restaurants</CardDescription>
+                  <CardDescription>
+                    Highest performing restaurants
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {(displayStats?.popular?.restaurants || []).map((restaurant, index) => (
-                      <div key={index} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="h-8 w-8 bg-orange-100 rounded-full flex items-center justify-center">
-                            <Store className="h-4 w-4 text-orange-500" />
+                    {(displayStats?.popular?.restaurants || []).map(
+                      (restaurant, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className="h-8 w-8 bg-orange-100 rounded-full flex items-center justify-center">
+                              <Store className="h-4 w-4 text-orange-500" />
+                            </div>
+                            <span>{restaurant.name}</span>
                           </div>
-                          <span>{restaurant.name}</span>
+                          <span className="font-medium">
+                            {restaurant.orders} orders
+                          </span>
                         </div>
-                        <span className="font-medium">{restaurant.orders} orders</span>
-                      </div>
-                    ))}
+                      )
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -465,5 +556,5 @@ export default function AdminDashboardPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
