@@ -98,31 +98,36 @@ export default function OrdersPage() {
           seenIds.add(order._id);
 
           // Check if this is the new format (with customer_id) or old format (with userId)
-          if (order.customer_id) {
-            // New format from order-service
-            normalizedOrders.push({
-              _id: order._id,
-              userId: order.customer_id,
-              restaurantId: order.restaurant_id,
-              items: order.items.map((item) => ({
-                menuItemId: item.menu_id,
-                name: item.name || "Menu Item",
-                price: item.price,
-                quantity: item.quantity,
-              })),
-              totalAmount: order.total_price,
-              status: order.order_status.toLowerCase(),
-              deliveryAddress: order.delivery_address,
-              paymentStatus: order.payment_status.toLowerCase(),
-              paymentMethod: order.payment_method.toLowerCase(),
-              specialInstructions: order.extra_notes?.join(", ") || "",
-              createdAt: order.createdAt,
-              updatedAt: order.updatedAt,
-            });
-          } else {
-            // Old format from restaurant-service
-            normalizedOrders.push(order);
-          }
+          const normalizedOrder = order.customer_id
+            ? {
+                // New format from order-service
+                _id: order._id,
+                userId: order.customer_id,
+                restaurantId: order.restaurant_id,
+                items: order.items.map((item) => ({
+                  menuItemId: item.menu_id || item.menuItemId,
+                  name: item.name || "Menu Item",
+                  price: item.price,
+                  quantity: item.quantity,
+                })),
+                totalAmount: order.total_price,
+                status: order.order_status.toLowerCase(),
+                deliveryAddress: order.delivery_address,
+                paymentStatus: order.payment_status.toLowerCase(),
+                paymentMethod: order.payment_method.toLowerCase(),
+                specialInstructions: order.extra_notes?.join(", ") || "",
+                createdAt: order.createdAt,
+                updatedAt: order.updatedAt,
+                // Add a unique service prefix to prevent duplicate key errors
+                _displayId: `order-${order._id}`,
+              }
+            : {
+                // Old format from restaurant-service
+                ...order,
+                _displayId: `rest-${order._id}`,
+              };
+
+          normalizedOrders.push(normalizedOrder);
         });
 
         setOrders(normalizedOrders);
@@ -370,7 +375,7 @@ export default function OrdersPage() {
                       <div className="space-y-4">
                         {filteredOrders.map((order) => (
                           <Collapsible
-                            key={`all-${order._id}`}
+                            key={order._displayId}
                             open={expandedOrders[order._id]}
                             onOpenChange={() => toggleOrderExpanded(order._id)}
                             className="border rounded-lg bg-white overflow-hidden"
@@ -574,7 +579,7 @@ export default function OrdersPage() {
                       <div className="space-y-4">
                         {filteredOrders.map((order) => (
                           <Collapsible
-                            key={`pending-${order._id}`}
+                            key={order._displayId}
                             open={expandedOrders[order._id]}
                             onOpenChange={() => toggleOrderExpanded(order._id)}
                             className="border rounded-lg bg-white overflow-hidden"
@@ -776,7 +781,7 @@ export default function OrdersPage() {
                       <div className="space-y-4">
                         {filteredOrders.map((order) => (
                           <Collapsible
-                            key={`completed-${order._id}`}
+                            key={order._displayId}
                             open={expandedOrders[order._id]}
                             onOpenChange={() => toggleOrderExpanded(order._id)}
                             className="border rounded-lg bg-white overflow-hidden"
