@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -22,17 +22,19 @@ import {
   Navigation,
   CheckCircle,
   XCircle,
-  Package,
-  TrendingUp,
   LogOut,
   RefreshCw,
+  History,
+  DollarSign,
 } from "lucide-react";
 import DeliveryMap from "@/components/delivery-map";
+import Link from "next/link";
 import {
   getActiveDeliveries,
   getDeliveryHistory,
   updateDeliveryStatus,
   getAvailableDeliveries,
+  getOrderById,
 } from "@/lib/delivery-api";
 
 export default function DeliveryDashboard() {
@@ -53,7 +55,15 @@ export default function DeliveryDashboard() {
     avgRating: 4.8,
   });
 
-  const useFallbackLocation = useCallback(() => {
+  // Debug user object
+  useEffect(() => {
+    if (user) {
+      console.log("Full user object:", user);
+    }
+  }, [user]);
+
+  // Also update the useFallbackLocation function to be a regular function instead of using useCallback
+  const useFallbackLocation = () => {
     // If we have a selected delivery with pickup location, use a location near it
     if (
       selectedDelivery &&
@@ -87,7 +97,7 @@ export default function DeliveryDashboard() {
     });
     console.log("Using default fallback location");
     setFallbackLocationUsed(true);
-  }, [selectedDelivery, setCurrentLocation]);
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -102,6 +112,7 @@ export default function DeliveryDashboard() {
     }
 
     if (!loading && user) {
+      console.log("User loaded:", user);
       fetchDeliveries();
       startLocationTracking();
 
@@ -112,7 +123,7 @@ export default function DeliveryDashboard() {
 
       return () => clearInterval(refreshInterval);
     }
-  }, [loading, user, router, useFallbackLocation]);
+  }, [loading, user, router]);
 
   // Update the fetchDeliveries function to properly fetch real orders from the backend
   const fetchDeliveries = async (silent = false) => {
@@ -123,10 +134,68 @@ export default function DeliveryDashboard() {
         setIsRefreshing(true);
       }
 
-      // Fetch active deliveries assigned to this delivery person
-      const activeData = await getActiveDeliveries(user.id);
+      // Make sure we have a user before making API calls
+      if (!user) {
+        console.error("User not available for API calls");
+        if (!silent) {
+          toast.error(
+            "User information not available. Please try logging in again."
+          );
+        }
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+
+      // Get the user ID from the appropriate property or use the username
+      // This is critical - we need to match how the backend stores the delivery person ID
+      const userId =
+        user._id ||
+        user.id ||
+        user.userId ||
+        user.uid ||
+        user.username ||
+        user.name;
+
+      if (!userId) {
+        console.error("User ID not found in user object:", user);
+        if (!silent) {
+          toast.error("User ID not available. Please try logging in again.");
+        }
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+
+      console.log("Using user ID for API calls:", userId);
+
+      // Fetch active deliveries assigned to this delivery person - try both ID and name
+      let activeData = await getActiveDeliveries(userId);
+
+      // If no deliveries found by ID, try using the username/name
+      if ((!activeData || activeData.length === 0) && user.username) {
+        console.log(
+          "No deliveries found by ID, trying username:",
+          user.username
+        );
+        activeData = await getActiveDeliveries(user.username);
+      } else if ((!activeData || activeData.length === 0) && user.name) {
+        console.log("No deliveries found by ID, trying name:", user.name);
+        activeData = await getActiveDeliveries(user.name);
+      }
+
+      // Also check for deliveries with status IN_TRANSIT
+      const inTransitDeliveries = activeData.filter(
+        (delivery) =>
+          delivery.status === "IN_TRANSIT" ||
+          delivery.status === "ASSIGNED" ||
+          delivery.status === "PICKED_UP"
+      );
+
       console.log("Active deliveries:", activeData);
-      setActiveDeliveries(activeData);
+      console.log("In-transit deliveries:", inTransitDeliveries);
+
+      setActiveDeliveries(inTransitDeliveries);
 
       // Fetch available deliveries that haven't been assigned yet
       try {
@@ -135,17 +204,41 @@ export default function DeliveryDashboard() {
         console.log("Pending deliveries:", pendingDeliveries);
 
         // Transform delivery data to the format we need
-        const availableOrders = pendingDeliveries.map((delivery) => ({
-          _id: delivery._id,
-          order_id: delivery.order_id,
-          restaurant_contact: delivery.restaurant_contact,
-          pickup_location: delivery.pickup_location,
-          delivery_location: delivery.delivery_location,
-          order: delivery.order,
-          estimated_delivery_time: 30,
-          created_at: delivery.createdAt,
-          isRealOrder: true, // Flag to identify real orders
-        }));
+        const availableOrders = await Promise.all(
+          pendingDeliveries.map(async (delivery) => {
+            // Try to fetch complete order details for each delivery
+            let orderDetails = delivery.order || { total_price: 0, items: 0 };
+
+            try {
+              if (!orderDetails.total_price || orderDetails.total_price === 0) {
+                const fetchedOrder = await getOrderById(delivery.order_id);
+                orderDetails = {
+                  total_price: fetchedOrder.total_price || 0,
+                  items: fetchedOrder.items?.length || 0,
+                  subtotal: fetchedOrder.subtotal || 0,
+                  tax_amount: fetchedOrder.tax_amount || 0,
+                };
+              }
+            } catch (error) {
+              console.error(
+                `Failed to fetch order details for delivery ${delivery._id}:`,
+                error
+              );
+            }
+
+            return {
+              _id: delivery._id,
+              order_id: delivery.order_id,
+              restaurant_contact: delivery.restaurant_contact,
+              pickup_location: delivery.pickup_location,
+              delivery_location: delivery.delivery_location,
+              order: orderDetails,
+              estimated_delivery_time: 30,
+              created_at: delivery.createdAt,
+              isRealOrder: true, // Flag to identify real orders
+            };
+          })
+        );
 
         console.log("Available orders to display:", availableOrders);
         setAvailableDeliveries(availableOrders);
@@ -154,8 +247,19 @@ export default function DeliveryDashboard() {
         setAvailableDeliveries([]);
       }
 
-      // Fetch delivery history
-      const historyData = await getDeliveryHistory(user.id);
+      // Fetch delivery history - try both ID and name
+      let historyData = await getDeliveryHistory(userId);
+
+      // If no history found by ID, try using the username/name
+      if ((!historyData || historyData.length === 0) && user.username) {
+        console.log("No history found by ID, trying username:", user.username);
+        historyData = await getDeliveryHistory(user.username);
+      } else if ((!historyData || historyData.length === 0) && user.name) {
+        console.log("No history found by ID, trying name:", user.name);
+        historyData = await getDeliveryHistory(user.name);
+      }
+
+      console.log("Fetched delivery history:", historyData);
       setDeliveryHistory(historyData);
 
       // Calculate stats
@@ -167,7 +271,7 @@ export default function DeliveryDashboard() {
 
       const totalEarnings = historyData.reduce((sum, delivery) => {
         // Assuming delivery person gets 80% of the delivery fee (which is 10% of order total)
-        const deliveryFee = delivery.order.total_price * 0.1;
+        const deliveryFee = (delivery.order?.total_price || 0) * 0.1;
         const earnings = deliveryFee * 0.8;
         return sum + earnings;
       }, 0);
@@ -189,32 +293,88 @@ export default function DeliveryDashboard() {
     }
   };
 
-  // Update the startLocationTracking function to handle errors better and provide fallback coordinates
-
+  // Replace the startLocationTracking function with this version that doesn't use hooks inside it
+  const watchIdRef = useRef(null);
   const startLocationTracking = () => {
+    const handleLocationUpdate = (position) => {
+      const { latitude, longitude } = position.coords;
+      setCurrentLocation({
+        lat: latitude,
+        lng: longitude,
+      });
+
+      // If there's a selected delivery, update its location on the server
+      if (selectedDelivery) {
+        updateDeliveryLocation(selectedDelivery._id, latitude, longitude);
+      }
+    };
+
+    // Regular function instead of useCallback
+    const tryFallbackLocation = () => {
+      if (!fallbackLocationUsed) {
+        // Use a location near the pickup location or a default location
+        if (
+          selectedDelivery &&
+          selectedDelivery.pickup_location &&
+          selectedDelivery.pickup_location.coordinates
+        ) {
+          const fallbackLat =
+            Number.parseFloat(
+              selectedDelivery.pickup_location.coordinates.lat
+            ) + 0.01;
+          const fallbackLng =
+            Number.parseFloat(
+              selectedDelivery.pickup_location.coordinates.lng
+            ) + 0.01;
+
+          setCurrentLocation({
+            lat: fallbackLat,
+            lng: fallbackLng,
+          });
+
+          console.log("Using fallback location near restaurant:", {
+            lat: fallbackLat,
+            lng: fallbackLng,
+          });
+          setFallbackLocationUsed(true);
+          return;
+        }
+
+        // Default fallback to a location (this should be customized based on your service area)
+        setCurrentLocation({
+          lat: 6.9271, // Default to Colombo, Sri Lanka coordinates
+          lng: 79.8612,
+        });
+        console.log("Using default fallback location");
+        setFallbackLocationUsed(true);
+      }
+    };
+
+    const handleLocationError = (error) => {
+      console.error("Error tracking location:", error);
+      // Don't show repeated errors for watchPosition
+      if (!currentLocation && !fallbackLocationUsed) {
+        tryFallbackLocation();
+      }
+    };
+
     if (!navigator.geolocation) {
       toast.error("Geolocation is not supported by your browser");
-      useFallbackLocation();
+      tryFallbackLocation();
       return;
     }
 
     // Get current position once
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const { latitude, longitude } = position.coords;
-        setCurrentLocation({
-          lat: latitude,
-          lng: longitude,
-        });
+        handleLocationUpdate(position);
       },
       (error) => {
         console.error("Error getting location:", error);
         toast.error(
           "Using approximate location. Enable location services for better accuracy."
         );
-        if (!fallbackLocationUsed) {
-          useFallbackLocation();
-        }
+        tryFallbackLocation();
       },
       {
         enableHighAccuracy: true,
@@ -224,25 +384,12 @@ export default function DeliveryDashboard() {
     );
 
     // Set up continuous tracking
-    const watchId = navigator.geolocation.watchPosition(
+    watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
-        const { latitude, longitude } = position.coords;
-        setCurrentLocation({
-          lat: latitude,
-          lng: longitude,
-        });
-
-        // If there's a selected delivery, update its location on the server
-        if (selectedDelivery) {
-          updateDeliveryLocation(selectedDelivery._id, latitude, longitude);
-        }
+        handleLocationUpdate(position);
       },
       (error) => {
-        console.error("Error tracking location:", error);
-        // Don't show repeated errors for watchPosition
-        if (!currentLocation && !fallbackLocationUsed) {
-          useFallbackLocation();
-        }
+        handleLocationError(error);
       },
       {
         enableHighAccuracy: true,
@@ -253,7 +400,9 @@ export default function DeliveryDashboard() {
 
     // Clean up on component unmount
     return () => {
-      navigator.geolocation.clearWatch(watchId);
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
     };
   };
 
@@ -286,6 +435,20 @@ export default function DeliveryDashboard() {
         return;
       }
 
+      // Get the user ID or name to use for assignment
+      const deliveryPersonId =
+        user._id ||
+        user.id ||
+        user.userId ||
+        user.uid ||
+        user.username ||
+        user.name;
+
+      if (!deliveryPersonId) {
+        toast.error("User ID not available. Please try logging in again.");
+        return;
+      }
+
       // Assign the delivery to this delivery person
       const response = await fetch(
         `http://localhost:5003/api/deliveries/${deliveryId}/assign`,
@@ -296,7 +459,9 @@ export default function DeliveryDashboard() {
           },
           credentials: "include",
           body: JSON.stringify({
+            delivery_person_id: deliveryPersonId,
             delivery_person_name: user.name,
+            order_details: delivery.order, // Pass the order details to the backend
           }),
         }
       );
@@ -307,26 +472,51 @@ export default function DeliveryDashboard() {
 
       const updatedDelivery = await response.json();
 
+      // Try to fetch the complete order details if not already available
+      let orderDetails = delivery.order;
+      if (
+        !orderDetails ||
+        !orderDetails.total_price ||
+        orderDetails.total_price === 0
+      ) {
+        try {
+          const fetchedOrder = await getOrderById(delivery.order_id);
+          orderDetails = {
+            total_price: fetchedOrder.total_price || 0,
+            items: fetchedOrder.items?.length || 0,
+            subtotal: fetchedOrder.subtotal || 0,
+            tax_amount: fetchedOrder.tax_amount || 0,
+          };
+        } catch (error) {
+          console.error(
+            `Failed to fetch order details for delivery ${delivery._id}:`,
+            error
+          );
+        }
+      }
+
       toast.success("Delivery accepted!");
 
-      // Add the new delivery to active deliveries
-      setActiveDeliveries((prev) => [
-        ...prev,
-        {
-          ...updatedDelivery,
-          status: "ASSIGNED",
-          assigned_at: new Date().toISOString(),
-          delivery_person_id: user.id,
-        },
-      ]);
-
-      // Select this delivery to show on map
-      setSelectedDelivery({
+      // Create a new active delivery with complete order details
+      const newActiveDelivery = {
         ...updatedDelivery,
         status: "ASSIGNED",
         assigned_at: new Date().toISOString(),
-        delivery_person_id: user.id,
-      });
+        delivery_person_id: deliveryPersonId,
+        delivery_person_name: user.name,
+        order: orderDetails,
+      };
+
+      console.log(
+        "Adding new active delivery with order details:",
+        newActiveDelivery
+      );
+
+      // Add the new delivery to active deliveries
+      setActiveDeliveries((prev) => [newActiveDelivery, ...prev]);
+
+      // Select this delivery to show on map
+      setSelectedDelivery(newActiveDelivery);
 
       // Remove from available deliveries list
       setAvailableDeliveries((prev) =>
@@ -344,8 +534,53 @@ export default function DeliveryDashboard() {
     toast.info("Delivery rejected");
   };
 
+  // Update the handleUpdateStatus function to properly refresh data after delivery completion
   const handleUpdateStatus = async (deliveryId, newStatus) => {
     try {
+      // If we're completing a delivery, make sure we have the order details first
+      if (newStatus === "DELIVERED") {
+        const delivery = activeDeliveries.find((d) => d._id === deliveryId);
+        if (
+          delivery &&
+          (!delivery.order ||
+            !delivery.order.total_price ||
+            delivery.order.total_price === 0)
+        ) {
+          try {
+            console.log(
+              `Fetching order details before completing delivery ${deliveryId}`
+            );
+            const orderDetails = await getOrderById(delivery.order_id);
+
+            // Update the delivery with order details before completing
+            const updatedDelivery = {
+              ...delivery,
+              order: {
+                total_price: orderDetails.total_price || 0,
+                items: orderDetails.items?.length || 0,
+                subtotal: orderDetails.subtotal || 0,
+                tax_amount: orderDetails.tax_amount || 0,
+              },
+            };
+
+            // Update the delivery in active deliveries
+            setActiveDeliveries((prev) =>
+              prev.map((d) => (d._id === deliveryId ? updatedDelivery : d))
+            );
+
+            // If this is the selected delivery, update it too
+            if (selectedDelivery && selectedDelivery._id === deliveryId) {
+              setSelectedDelivery(updatedDelivery);
+            }
+          } catch (error) {
+            console.error(
+              `Failed to fetch order details before completing delivery ${deliveryId}:`,
+              error
+            );
+          }
+        }
+      }
+
       await updateDeliveryStatus(deliveryId, newStatus);
 
       // Update the delivery in our state
@@ -383,7 +618,21 @@ export default function DeliveryDashboard() {
       // If delivery is completed, refresh the data
       if (newStatus === "DELIVERED") {
         toast.success("Delivery completed successfully!");
-        fetchDeliveries();
+
+        // Wait a moment for the backend to update
+        setTimeout(() => {
+          fetchDeliveries(true);
+        }, 1000);
+
+        // If the delivery was completed, remove it from active deliveries after a delay
+        setTimeout(() => {
+          setActiveDeliveries((prev) =>
+            prev.filter((d) => d._id !== deliveryId)
+          );
+          if (selectedDelivery && selectedDelivery._id === deliveryId) {
+            setSelectedDelivery(null);
+          }
+        }, 3000);
       } else {
         toast.success(
           `Delivery status updated to ${newStatus.replace(/_/g, " ")}`
@@ -395,7 +644,37 @@ export default function DeliveryDashboard() {
     }
   };
 
-  const handleSelectDelivery = (delivery) => {
+  const handleSelectDelivery = async (delivery) => {
+    // If the delivery has missing or zero order details, try to fetch them
+    if (
+      !delivery.order ||
+      !delivery.order.total_price ||
+      delivery.order.total_price === 0
+    ) {
+      try {
+        const orderDetails = await getOrderById(delivery.order_id);
+        delivery = {
+          ...delivery,
+          order: {
+            total_price: orderDetails.total_price || 0,
+            items: orderDetails.items?.length || 0,
+            subtotal: orderDetails.subtotal || 0,
+            tax_amount: orderDetails.tax_amount || 0,
+          },
+        };
+
+        // Also update the delivery in the active deliveries list
+        setActiveDeliveries((prev) =>
+          prev.map((d) => (d._id === delivery._id ? delivery : d))
+        );
+      } catch (error) {
+        console.error(
+          `Failed to fetch order details for selected delivery ${delivery._id}:`,
+          error
+        );
+      }
+    }
+
     setSelectedDelivery(delivery);
   };
 
@@ -424,6 +703,18 @@ export default function DeliveryDashboard() {
                 <p className="text-gray-600">
                   Welcome back, {user?.name || "Delivery Partner"}
                 </p>
+                <p className="text-xs text-gray-500">
+                  User ID:{" "}
+                  {user?._id ||
+                    user?.id ||
+                    user?.userId ||
+                    user?.uid ||
+                    user?.username ||
+                    "Not available"}
+                </p>
+                <p className="text-xs text-gray-500">
+                  Username: {user?.username || user?.name || "Not available"}
+                </p>
               </div>
               <div className="flex gap-2">
                 <Button
@@ -448,42 +739,47 @@ export default function DeliveryDashboard() {
               </div>
             </div>
 
-            {/* Stats cards */}
+            {/* Quick Links */}
             <div className="grid grid-cols-2 gap-4 mb-6">
-              <Card className="bg-white border-none shadow-md">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-500">
-                        Today's Deliveries
-                      </p>
-                      <p className="text-2xl font-bold">
-                        {stats.completedToday}
-                      </p>
+              <Link href="/dashboard/delivery/earnings">
+                <Card className="bg-white border-none shadow-md hover:shadow-lg transition-all cursor-pointer">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-500">Earnings</p>
+                        <p className="text-2xl font-bold">${stats.earnings}</p>
+                      </div>
+                      <DollarSign className="h-8 w-8 text-green-500" />
                     </div>
-                    <Package className="h-8 w-8 text-orange-500" />
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </Link>
 
-              <Card className="bg-white border-none shadow-md">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-500">Earnings</p>
-                      <p className="text-2xl font-bold">${stats.earnings}</p>
+              <Link href="/dashboard/delivery/history">
+                <Card className="bg-white border-none shadow-md hover:shadow-lg transition-all cursor-pointer">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-500">History</p>
+                        <p className="text-2xl font-bold">
+                          {stats.totalDeliveries}
+                        </p>
+                      </div>
+                      <History className="h-8 w-8 text-blue-500" />
                     </div>
-                    <TrendingUp className="h-8 w-8 text-green-500" />
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </Link>
             </div>
 
             <Tabs defaultValue="active" className="w-full">
-              <TabsList className="grid grid-cols-3 mb-4">
-                <TabsTrigger value="active">Active</TabsTrigger>
-                <TabsTrigger value="available">Available</TabsTrigger>
-                <TabsTrigger value="history">History</TabsTrigger>
+              <TabsList className="grid grid-cols-2 mb-4">
+                <TabsTrigger value="active">
+                  Active ({activeDeliveries.length})
+                </TabsTrigger>
+                <TabsTrigger value="available">
+                  Available ({availableDeliveries.length})
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="active" className="space-y-4">
@@ -513,7 +809,8 @@ export default function DeliveryDashboard() {
                             className={
                               delivery.status === "DELIVERED"
                                 ? "bg-green-100 text-green-700"
-                                : delivery.status === "PICKED_UP"
+                                : delivery.status === "PICKED_UP" ||
+                                  delivery.status === "IN_TRANSIT"
                                 ? "bg-blue-100 text-blue-700"
                                 : "bg-amber-100 text-amber-700"
                             }
@@ -560,7 +857,7 @@ export default function DeliveryDashboard() {
                             </div>
                             <div>
                               <span className="font-medium">
-                                ${delivery.order?.total_price.toFixed(2)}
+                                ${(delivery.order?.total_price || 0).toFixed(2)}
                               </span>
                             </div>
                           </div>
@@ -578,7 +875,8 @@ export default function DeliveryDashboard() {
                               </Button>
                             )}
 
-                            {delivery.status === "PICKED_UP" && (
+                            {(delivery.status === "PICKED_UP" ||
+                              delivery.status === "IN_TRANSIT") && (
                               <Button
                                 className="w-full bg-green-500 hover:bg-green-600"
                                 onClick={(e) => {
@@ -665,7 +963,7 @@ export default function DeliveryDashboard() {
                             </div>
                             <div>
                               <span className="font-medium">
-                                ${delivery.order?.total_price.toFixed(2)}
+                                ${(delivery.order?.total_price || 0).toFixed(2)}
                               </span>
                             </div>
                           </div>
@@ -687,55 +985,6 @@ export default function DeliveryDashboard() {
                           </div>
                         </div>
                       </CardFooter>
-                    </Card>
-                  ))
-                )}
-              </TabsContent>
-
-              <TabsContent value="history" className="space-y-4">
-                {deliveryHistory.length === 0 ? (
-                  <Card className="border-none shadow-md">
-                    <CardContent className="p-6 text-center">
-                      <p className="text-gray-500">No delivery history</p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  deliveryHistory.map((delivery) => (
-                    <Card key={delivery._id} className="border-none shadow-md">
-                      <CardHeader className="p-4 pb-2">
-                        <div className="flex justify-between items-center">
-                          <CardTitle className="text-base">
-                            Order #{delivery.order_id.substring(0, 6)}
-                          </CardTitle>
-                          <Badge className="bg-green-100 text-green-700">
-                            {delivery.status}
-                          </Badge>
-                        </div>
-                        <CardDescription>
-                          {new Date(
-                            delivery.delivered_at || delivery.createdAt
-                          ).toLocaleDateString()}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="p-4 pt-2">
-                        <div className="space-y-2 text-sm">
-                          <div className="flex items-center justify-between">
-                            <span>
-                              {delivery.restaurant_contact?.name ||
-                                "Restaurant"}
-                            </span>
-                            <span className="font-medium">
-                              ${delivery.order?.total_price.toFixed(2)}
-                            </span>
-                          </div>
-                          <div className="flex items-start gap-2">
-                            <MapPin className="h-4 w-4 text-gray-500 mt-0.5" />
-                            <p className="text-gray-500 truncate">
-                              {delivery.delivery_location?.address}
-                            </p>
-                          </div>
-                        </div>
-                      </CardContent>
                     </Card>
                   ))
                 )}
@@ -796,7 +1045,8 @@ export default function DeliveryDashboard() {
                           className={
                             selectedDelivery.status === "DELIVERED"
                               ? "bg-green-100 text-green-700"
-                              : selectedDelivery.status === "PICKED_UP"
+                              : selectedDelivery.status === "PICKED_UP" ||
+                                selectedDelivery.status === "IN_TRANSIT"
                               ? "bg-blue-100 text-blue-700"
                               : "bg-amber-100 text-amber-700"
                           }
@@ -819,7 +1069,8 @@ export default function DeliveryDashboard() {
                                 height:
                                   selectedDelivery.status === "DELIVERED"
                                     ? "100%"
-                                    : selectedDelivery.status === "PICKED_UP"
+                                    : selectedDelivery.status === "PICKED_UP" ||
+                                      selectedDelivery.status === "IN_TRANSIT"
                                     ? "50%"
                                     : "25%",
                               }}
@@ -852,6 +1103,7 @@ export default function DeliveryDashboard() {
                                 <div
                                   className={`absolute left-0 top-1 h-4 w-4 rounded-full ${
                                     selectedDelivery.status === "PICKED_UP" ||
+                                    selectedDelivery.status === "IN_TRANSIT" ||
                                     selectedDelivery.status === "DELIVERED"
                                       ? "bg-green-500"
                                       : "bg-gray-300"
@@ -978,9 +1230,9 @@ export default function DeliveryDashboard() {
                               </p>
                               <p className="font-medium">
                                 $
-                                {selectedDelivery.order?.total_price.toFixed(
-                                  2
-                                ) || "0.00"}
+                                {(
+                                  selectedDelivery.order?.total_price || 0
+                                ).toFixed(2)}
                               </p>
                             </div>
                             <div>
@@ -990,8 +1242,9 @@ export default function DeliveryDashboard() {
                               <p className="font-medium">
                                 $
                                 {(
-                                  selectedDelivery.order?.total_price * 0.1
-                                ).toFixed(2) || "0.00"}
+                                  (selectedDelivery.order?.total_price || 0) *
+                                  0.1
+                                ).toFixed(2)}
                               </p>
                             </div>
                           </div>
@@ -1013,7 +1266,8 @@ export default function DeliveryDashboard() {
                             </Button>
                           )}
 
-                          {selectedDelivery.status === "PICKED_UP" && (
+                          {(selectedDelivery.status === "PICKED_UP" ||
+                            selectedDelivery.status === "IN_TRANSIT") && (
                             <Button
                               className="flex-1 bg-green-500 hover:bg-green-600"
                               onClick={() =>
