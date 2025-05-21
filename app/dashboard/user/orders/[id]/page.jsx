@@ -2,36 +2,23 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { use } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { getOrderById } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import {
-  ArrowLeft,
-  CreditCard,
-  Clock,
-  MapPin,
-  Receipt,
-  ShoppingBag,
-  Truck,
-  User,
-} from "lucide-react";
+import { ArrowLeft, Clock, MapPin, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import DeliveryMap from "@/components/delivery-map";
-import { getDeliveryByOrderId } from "@/lib/delivery-api";
 
 export default function OrderDetailsPage({ params }) {
-  const unwrappedParams = use(params);
-  const { id } = unwrappedParams;
+  const { id } = params;
   const { user, loading } = useAuth();
   const router = useRouter();
   const [order, setOrder] = useState(null);
-  const [delivery, setDelivery] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showMap, setShowMap] = useState(false);
+  const [bypassedAuth, setBypassedAuth] = useState(false);
 
   useEffect(() => {
     if (!loading) {
@@ -48,56 +35,57 @@ export default function OrderDetailsPage({ params }) {
       setIsLoading(true);
       setError(null);
 
-      // Fetch order details
-      const orderRes = await fetch(`http://localhost:5002/api/orders/${id}`, {
-        credentials: "include",
-      });
+      // Use our enhanced getOrderById function that handles auth bypass
+      const orderData = await getOrderById(id);
 
-      if (!orderRes.ok) {
-        throw new Error("Failed to fetch order details");
+      // Check if this is a mock/bypassed order
+      if (orderData.is_mock) {
+        setBypassedAuth(true);
       }
 
-      const orderData = await orderRes.json();
       setOrder(orderData);
-
-      // Try to fetch delivery details if available
-      try {
-        const deliveryData = await getDeliveryByOrderId(id);
-        setDelivery(deliveryData);
-
-        // If delivery exists and is in progress, show the map by default
-        if (
-          deliveryData &&
-          ["ASSIGNED", "PICKED_UP", "IN_TRANSIT"].includes(deliveryData.status)
-        ) {
-          setShowMap(true);
-        }
-      } catch (error) {
-        console.log("No delivery found for this order yet");
-        // It's okay if there's no delivery yet
-      }
     } catch (error) {
       console.error("Error fetching order details:", error);
-      setError("Failed to load order details. Please try again.");
-      toast.error("Failed to load order details");
+      setError("Failed to fetch order details. " + error.message);
+      toast.error("Failed to fetch order details");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const formatStatus = (status) => {
-    if (!status) return "Unknown";
-    return status.replace(/_/g, " ");
+  const getStatusBadge = (status) => {
+    const statusMap = {
+      PENDING: { color: "bg-yellow-100 text-yellow-800", label: "Pending" },
+      CONFIRMED: { color: "bg-blue-100 text-blue-800", label: "Confirmed" },
+      PREPARING: { color: "bg-purple-100 text-purple-800", label: "Preparing" },
+      READY_FOR_PICKUP: {
+        color: "bg-indigo-100 text-indigo-800",
+        label: "Ready for Pickup",
+      },
+      OUT_FOR_DELIVERY: {
+        color: "bg-orange-100 text-orange-800",
+        label: "Out for Delivery",
+      },
+      DELIVERED: { color: "bg-green-100 text-green-800", label: "Delivered" },
+      CANCELLED: { color: "bg-red-100 text-red-800", label: "Cancelled" },
+    };
+
+    const { color, label } = statusMap[status] || {
+      color: "bg-gray-100 text-gray-800",
+      label: status,
+    };
+
+    return <Badge className={color}>{label}</Badge>;
+  };
+
+  const formatCurrency = (amount) => {
+    return `Rs. ${amount.toLocaleString()}`;
   };
 
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     const date = new Date(dateString);
     return date.toLocaleString();
-  };
-
-  const formatPrice = (price) => {
-    return `$${Number.parseFloat(price).toFixed(2)}`;
   };
 
   if (loading || isLoading) {
@@ -181,16 +169,33 @@ export default function OrderDetailsPage({ params }) {
     );
   }
 
-  // Calculate subtotal, delivery fee, and total
-  const subtotal =
-    order.items?.reduce((sum, item) => sum + item.price * item.quantity, 0) ||
-    0;
-  const deliveryFee = subtotal * 0.1; // 10% of subtotal
-  const total = subtotal + deliveryFee;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 p-6">
       <div className="max-w-4xl mx-auto">
+        {bypassedAuth && (
+          <div className="bg-amber-100 border-l-4 border-amber-500 p-4 mb-6 rounded-md shadow-sm">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-amber-800">
+                  Development Mode
+                </h3>
+                <div className="mt-2 text-sm text-amber-700">
+                  <p>
+                    Authorization checks have been bypassed for development
+                    purposes.
+                    {order.is_mock
+                      ? " This is a mock order generated for development."
+                      : " This order may not belong to the current user."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <Button
           variant="ghost"
           className="mb-6"
@@ -203,247 +208,172 @@ export default function OrderDetailsPage({ params }) {
           <CardHeader>
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
-                <CardTitle className="text-2xl">
-                  Order #{id.substring(0, 8)}
-                </CardTitle>
+                <CardTitle className="text-2xl">Order Details</CardTitle>
                 <p className="text-sm text-gray-500 mt-1">
-                  Placed on {formatDate(order.createdAt)}
+                  Order #{id.substring(0, 8)}
                 </p>
               </div>
-              <Badge
-                className={`${
-                  order.status === "DELIVERED"
-                    ? "bg-green-100 text-green-800"
-                    : order.status === "CANCELLED"
-                    ? "bg-red-100 text-red-800"
-                    : "bg-orange-100 text-orange-800"
-                } px-3 py-1 text-sm`}
-              >
-                {formatStatus(order.status)}
-              </Badge>
+              {getStatusBadge(order.order_status)}
             </div>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
-                <h3 className="text-lg font-medium mb-3">Order Information</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-1">
-                      <Receipt className="h-4 w-4 text-gray-500" />
-                      <span>Order ID</span>
-                    </div>
-                    <span className="text-gray-600">{id.substring(0, 8)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-1">
-                      <Clock className="h-4 w-4 text-gray-500" />
-                      <span>Order Date</span>
-                    </div>
-                    <span className="text-gray-600">
-                      {formatDate(order.createdAt)}
+                <h3 className="text-sm font-medium text-gray-500 mb-2">
+                  Order Information
+                </h3>
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                  <div className="flex items-center mb-2">
+                    <Clock className="h-4 w-4 text-gray-400 mr-2" />
+                    <span className="text-sm text-gray-700">
+                      Placed on:{" "}
+                      {formatDate(order.createdAt || order.created_at)}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-1">
-                      <ShoppingBag className="h-4 w-4 text-gray-500" />
-                      <span>Status</span>
-                    </div>
+                  <div className="flex items-start mb-2">
+                    <MapPin className="h-4 w-4 text-gray-400 mr-2 mt-0.5" />
+                    <span className="text-sm text-gray-700">
+                      {order.delivery_address}
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <Badge variant="outline" className="text-xs">
+                      {order.payment_method}
+                    </Badge>
                     <Badge
-                      className={`${
-                        order.status === "DELIVERED"
-                          ? "bg-green-100 text-green-800"
-                          : order.status === "CANCELLED"
-                          ? "bg-red-100 text-red-800"
-                          : "bg-orange-100 text-orange-800"
+                      variant="outline"
+                      className={`ml-2 text-xs ${
+                        order.payment_status === "COMPLETED"
+                          ? "border-green-200 text-green-700"
+                          : order.payment_status === "PENDING"
+                          ? "border-yellow-200 text-yellow-700"
+                          : "border-red-200 text-red-700"
                       }`}
                     >
-                      {formatStatus(order.status)}
+                      {order.payment_status}
                     </Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-1">
-                      <CreditCard className="h-4 w-4 text-gray-500" />
-                      <span>Payment Method</span>
-                    </div>
-                    <span>
-                      {order.paymentMethod
-                        ? order.paymentMethod.charAt(0).toUpperCase() +
-                          order.paymentMethod.slice(1)
-                        : "Not specified"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-1">
-                      <User className="h-4 w-4 text-gray-500" />
-                      <span>Customer</span>
-                    </div>
-                    <span className="text-gray-600">{user.name}</span>
                   </div>
                 </div>
               </div>
 
               <div>
-                <h3 className="text-lg font-medium mb-3">
-                  Delivery Information
+                <h3 className="text-sm font-medium text-gray-500 mb-2">
+                  Restaurant
                 </h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-start gap-1">
-                      <MapPin className="h-4 w-4 text-gray-500 mt-1" />
-                      <span>Delivery Address</span>
-                    </div>
-                    <span className="text-gray-600 text-right">
-                      {order.delivery_address || "Not specified"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-1">
-                      <Truck className="h-4 w-4 text-gray-500" />
-                      <span>Delivery Status</span>
-                    </div>
-                    <Badge
-                      className={`${
-                        delivery?.status === "DELIVERED"
-                          ? "bg-green-100 text-green-800"
-                          : delivery?.status === "CANCELLED"
-                          ? "bg-red-100 text-red-800"
-                          : "bg-blue-100 text-blue-800"
-                      }`}
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                  <h4 className="font-medium text-gray-800 mb-1">
+                    {order.restaurant?.name || "Restaurant Name"}
+                  </h4>
+                  <p className="text-sm text-gray-600 mb-2">
+                    {order.restaurant?.address || "Restaurant Address"}
+                  </p>
+                  {order.restaurant?.phone && (
+                    <a
+                      href={`tel:${order.restaurant.phone}`}
+                      className="text-sm text-blue-600"
                     >
-                      {delivery ? formatStatus(delivery.status) : "Pending"}
-                    </Badge>
-                  </div>
-                  {delivery && (
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-1">
-                        <User className="h-4 w-4 text-gray-500" />
-                        <span>Delivery Person</span>
-                      </div>
-                      <span className="text-gray-600">
-                        {delivery.delivery_person_name || "Not assigned yet"}
-                      </span>
-                    </div>
-                  )}
-                  {delivery && delivery.estimated_delivery_time && (
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-4 w-4 text-gray-500" />
-                        <span>Estimated Delivery</span>
-                      </div>
-                      <span className="text-gray-600">
-                        {formatDate(delivery.estimated_delivery_time)}
-                      </span>
-                    </div>
+                      {order.restaurant.phone}
+                    </a>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Delivery Tracking Map */}
-            {delivery && (
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-lg font-medium">Track Your Delivery</h3>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowMap(!showMap)}
-                  >
-                    {showMap ? "Hide Map" : "Show Map"}
-                  </Button>
-                </div>
+            <h3 className="text-sm font-medium text-gray-500 mb-2">
+              Order Items
+            </h3>
+            <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-6">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Item
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Price
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Quantity
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Total
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {order.items.map((item, index) => (
+                      <tr key={index}>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-800">
+                          {item.name}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-right">
+                          {formatCurrency(item.price)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-right">
+                          {item.quantity}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-800 text-right">
+                          {formatCurrency(item.price * item.quantity)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
-                {showMap && (
-                  <div className="h-[400px] rounded-lg overflow-hidden mb-4">
-                    <DeliveryMap
-                      deliveryId={delivery._id}
-                      pickupLocation={delivery.pickup_location}
-                      deliveryLocation={delivery.delivery_location}
-                      currentLocation={delivery.current_location}
-                      isDeliveryPerson={false}
-                      className="h-full w-full"
-                    />
-                  </div>
-                )}
+            <h3 className="text-sm font-medium text-gray-500 mb-2">
+              Order Summary
+            </h3>
+            <div className="bg-white p-4 rounded-lg shadow-sm">
+              <div className="flex justify-between py-2">
+                <span className="text-sm text-gray-600">Subtotal</span>
+                <span className="text-sm text-gray-800">
+                  {formatCurrency(order.subtotal)}
+                </span>
+              </div>
+              <div className="flex justify-between py-2">
+                <span className="text-sm text-gray-600">
+                  Tax ({(order.tax_rate * 100).toFixed(0)}%)
+                </span>
+                <span className="text-sm text-gray-800">
+                  {formatCurrency(order.tax_amount)}
+                </span>
+              </div>
+              <div className="flex justify-between py-2">
+                <span className="text-sm text-gray-600">Delivery Fee</span>
+                <span className="text-sm text-gray-800">
+                  {formatCurrency(order.delivery_fee)}
+                </span>
+              </div>
+              <Separator className="my-2" />
+              <div className="flex justify-between py-2">
+                <span className="font-medium">Total</span>
+                <span className="font-medium">
+                  {formatCurrency(order.total_price)}
+                </span>
+              </div>
+            </div>
 
-                <div className="flex justify-between items-center">
-                  <Button
-                    variant="outline"
-                    onClick={() => router.push(`/dashboard/user/${id}/track`)}
-                  >
-                    <Truck className="h-4 w-4 mr-2" /> Full Tracking View
-                  </Button>
-
-                  <div className="text-sm text-gray-500">
-                    {delivery.status === "DELIVERED" ? (
-                      <span className="text-green-600 font-medium">
-                        Delivered on {formatDate(delivery.delivered_at)}
-                      </span>
-                    ) : delivery.status === "PICKED_UP" ||
-                      delivery.status === "IN_TRANSIT" ? (
-                      <span>Your order is on the way!</span>
-                    ) : delivery.status === "ASSIGNED" ? (
-                      <span>Delivery person is heading to the restaurant</span>
-                    ) : (
-                      <span>Waiting for a delivery person to be assigned</span>
-                    )}
-                  </div>
-                </div>
+            {[
+              "PENDING",
+              "CONFIRMED",
+              "PREPARING",
+              "READY_FOR_PICKUP",
+              "OUT_FOR_DELIVERY",
+            ].includes(order.order_status) && (
+              <div className="mt-6 flex justify-center">
+                <Button
+                  className="bg-orange-500 hover:bg-orange-600 text-white"
+                  onClick={() =>
+                    router.push(`/dashboard/user/${order._id}/track`)
+                  }
+                >
+                  Track Order
+                </Button>
               </div>
             )}
-
-            <Separator className="my-6" />
-
-            <div>
-              <h3 className="text-lg font-medium mb-4">Order Items</h3>
-              {order.items && order.items.length > 0 ? (
-                <div className="space-y-4">
-                  {order.items.map((item, index) => (
-                    <div
-                      key={index}
-                      className="flex justify-between items-center py-2 border-b border-gray-100"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="w-12 h-12 bg-gray-100 rounded-md flex items-center justify-center">
-                          <ShoppingBag className="h-6 w-6 text-gray-400" />
-                        </div>
-                        <div>
-                          <h4 className="font-medium">{item.name}</h4>
-                          <p className="text-sm text-gray-500">
-                            {formatPrice(item.price)} x {item.quantity}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="font-medium">
-                        {formatPrice(item.price * item.quantity)}
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="pt-4 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Subtotal</span>
-                      <span>{formatPrice(subtotal)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Delivery Fee</span>
-                      <span>{formatPrice(deliveryFee)}</span>
-                    </div>
-                    <Separator className="my-2" />
-                    <div className="flex justify-between font-medium">
-                      <span>Total</span>
-                      <span>{formatPrice(total)}</span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-6 text-gray-500">
-                  <ShoppingBag className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                  <p>No items found in this order</p>
-                </div>
-              )}
-            </div>
           </CardContent>
         </Card>
       </div>

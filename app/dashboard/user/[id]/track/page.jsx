@@ -17,9 +17,11 @@ import {
   User,
   Package,
   Check,
+  AlertTriangle,
 } from "lucide-react";
 import DeliveryMap from "@/components/delivery-map";
 import { toast } from "sonner";
+import { getOrderById } from "@/lib/api";
 
 export default function TrackOrderPage({ params }) {
   const unwrappedParams = use(params);
@@ -30,6 +32,7 @@ export default function TrackOrderPage({ params }) {
   const [delivery, setDelivery] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [bypassedAuth, setBypassedAuth] = useState(false);
 
   useEffect(() => {
     if (!loading) {
@@ -41,39 +44,41 @@ export default function TrackOrderPage({ params }) {
     }
   }, [user, loading, router, id]);
 
-  // Update the fetchOrderAndDelivery function to properly fetch real order and delivery data
+  // Update the fetchOrderAndDelivery function to use our new getOrderById function
   const fetchOrderAndDelivery = async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      // Fetch real order data
-      const orderRes = await fetch(`http://localhost:5002/api/orders/${id}`, {
-        credentials: "include",
-      });
-
-      if (!orderRes.ok) {
-        if (orderRes.status === 404) {
-          throw new Error("Order not found");
-        }
-        throw new Error("Failed to fetch order");
-      }
-
-      const orderData = await orderRes.json();
+      // Use our enhanced getOrderById function that handles auth bypass
+      const orderData = await getOrderById(id);
       setOrder(orderData);
+
+      // Check if this is a mock/bypassed order
+      if (orderData.is_mock) {
+        setBypassedAuth(true);
+        // For mock orders, create mock delivery data
+        setDelivery(createMockDelivery(orderData));
+        return;
+      }
 
       // Fetch delivery data if available
       if (orderData.delivery_id) {
-        const deliveryRes = await fetch(
-          `http://localhost:5003/api/deliveries/${orderData.delivery_id}`,
-          {
-            credentials: "include",
-          }
-        );
+        try {
+          const deliveryRes = await fetch(
+            `http://localhost:5003/api/deliveries/${orderData.delivery_id}`,
+            {
+              credentials: "include",
+            }
+          );
 
-        if (deliveryRes.ok) {
-          const deliveryData = await deliveryRes.json();
-          setDelivery(deliveryData);
+          if (deliveryRes.ok) {
+            const deliveryData = await deliveryRes.json();
+            setDelivery(deliveryData);
+          }
+        } catch (error) {
+          console.error("Error fetching delivery:", error);
+          // Continue without delivery data
         }
       } else {
         // If no delivery_id, try to find delivery by order_id
@@ -92,6 +97,12 @@ export default function TrackOrderPage({ params }) {
         } catch (error) {
           console.error("Error fetching delivery by order ID:", error);
           // No delivery found, continue without it
+
+          // For development, create a mock delivery if none exists
+          if (orderData.order_status === "OUT_FOR_DELIVERY") {
+            setDelivery(createMockDelivery(orderData));
+            setBypassedAuth(true);
+          }
         }
       }
     } catch (error) {
@@ -103,6 +114,53 @@ export default function TrackOrderPage({ params }) {
     }
   };
 
+  // Helper function to create mock delivery data
+  const createMockDelivery = (orderData) => {
+    const now = new Date();
+
+    return {
+      _id: `mock_delivery_${orderData._id}`,
+      order_id: orderData._id,
+      status: "IN_TRANSIT",
+      pickup_location: {
+        address: orderData.restaurant?.address || "Restaurant Address",
+        coordinates: orderData.restaurant?.coordinates || {
+          lat: 6.9271,
+          lng: 79.8612,
+        },
+      },
+      delivery_location: {
+        address: orderData.delivery_address,
+        coordinates: orderData.delivery_coordinates || {
+          lat: 6.9344,
+          lng: 79.8428,
+        },
+      },
+      current_location: {
+        // Position the delivery person somewhere along the route
+        lat: 6.9308, // Halfway between pickup and delivery
+        lng: 79.852, // Halfway between pickup and delivery
+        updated_at: new Date().toISOString(),
+      },
+      delivery_person_name: "Saman Perera",
+      customer_contact: {
+        name: "Customer",
+        phone: "+94 77 123 4567",
+      },
+      restaurant_contact: {
+        name: orderData.restaurant?.name || "Restaurant",
+        phone: "+94 11 234 5678",
+      },
+      estimated_delivery_time:
+        orderData.estimated_delivery_time ||
+        new Date(now.getTime() + 15 * 60 * 1000).toISOString(),
+      picked_up_at:
+        orderData.out_delivery_time ||
+        new Date(now.getTime() - 20 * 60 * 1000).toISOString(),
+      is_mock: true,
+    };
+  };
+
   // Add a function to periodically refresh the tracking data
   useEffect(() => {
     let intervalId;
@@ -111,8 +169,8 @@ export default function TrackOrderPage({ params }) {
       !loading &&
       user &&
       order &&
-      (order.status === "OUT_FOR_DELIVERY" ||
-        order.status === "READY_FOR_PICKUP")
+      (order.order_status === "OUT_FOR_DELIVERY" ||
+        order.order_status === "READY_FOR_PICKUP")
     ) {
       // Set up polling to refresh tracking data every 15 seconds
       intervalId = setInterval(() => {
@@ -126,79 +184,6 @@ export default function TrackOrderPage({ params }) {
       }
     };
   }, [loading, user, order]);
-
-  const createRealisticDataForOrder = (orderId) => {
-    // Current time
-    const now = new Date();
-
-    // Create a realistic order based on the order ID
-    const mockOrder = {
-      _id: orderId,
-      status: "OUT_FOR_DELIVERY",
-      restaurant: {
-        name: "Upali's by Nawaloka",
-        address: "65 Dr C.W.W Kannangara Mawatha, Colombo 00700",
-        coordinates: {
-          lat: 6.9271,
-          lng: 79.8612,
-        },
-      },
-      delivery_address: "42 Galle Face Terrace, Colombo 00300",
-      delivery_coordinates: {
-        lat: 6.9344,
-        lng: 79.8428,
-      },
-      created_at: new Date(now.getTime() - 45 * 60 * 1000).toISOString(),
-      estimated_delivery_time: new Date(
-        now.getTime() + 15 * 60 * 1000
-      ).toISOString(),
-    };
-
-    // Create a realistic delivery with a route between the restaurant and delivery address
-    const mockDelivery = {
-      _id: orderId.replace("demo_", "delivery_"),
-      status: "IN_TRANSIT",
-      pickup_location: {
-        address: mockOrder.restaurant.address,
-        coordinates: {
-          lat: mockOrder.restaurant.coordinates.lat,
-          lng: mockOrder.restaurant.coordinates.lng,
-        },
-      },
-      delivery_location: {
-        address: mockOrder.delivery_address,
-        coordinates: {
-          lat: mockOrder.delivery_coordinates.lat,
-          lng: mockOrder.delivery_coordinates.lng,
-        },
-      },
-      current_location: {
-        // Position the delivery person somewhere along the route
-        lat:
-          (mockOrder.restaurant.coordinates.lat +
-            mockOrder.delivery_coordinates.lat) /
-          2,
-        lng:
-          (mockOrder.restaurant.coordinates.lng +
-            mockOrder.delivery_coordinates.lng) /
-          2,
-        updated_at: new Date().toISOString(),
-      },
-      delivery_person_name: "Saman Perera",
-      customer_contact: {
-        name: "Nimal Fernando",
-        phone: "+94 77 123 4567",
-      },
-      restaurant_contact: {
-        name: mockOrder.restaurant.name,
-        phone: "+94 11 234 5678",
-      },
-      estimated_delivery_time: mockOrder.estimated_delivery_time,
-      picked_up_at: new Date(now.getTime() - 20 * 60 * 1000).toISOString(),
-    };
-
-    return { order: mockOrder, delivery: mockDelivery };
-  };
 
   const getStatusStep = (status) => {
     const statusSteps = {
@@ -329,6 +314,30 @@ export default function TrackOrderPage({ params }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 p-6">
       <div className="max-w-4xl mx-auto">
+        {bypassedAuth && (
+          <div className="bg-amber-100 border-l-4 border-amber-500 p-4 mb-6 rounded-md shadow-sm">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-amber-800">
+                  Development Mode
+                </h3>
+                <div className="mt-2 text-sm text-amber-700">
+                  <p>
+                    Authorization checks have been bypassed for development
+                    purposes.
+                    {order.is_mock
+                      ? " This is a mock order generated for development."
+                      : " This order may not belong to the current user."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <Button
           variant="ghost"
           className="mb-6"
@@ -348,14 +357,16 @@ export default function TrackOrderPage({ params }) {
               </div>
               <Badge
                 className={`${
-                  order?.status === "DELIVERED"
+                  order?.order_status === "DELIVERED"
                     ? "bg-green-100 text-green-800"
-                    : order?.status === "CANCELLED"
+                    : order?.order_status === "CANCELLED"
                     ? "bg-red-100 text-red-800"
                     : "bg-orange-100 text-orange-800"
                 } px-3 py-1 text-sm`}
               >
-                {order?.status ? order.status.replace(/_/g, " ") : "Processing"}
+                {order?.order_status
+                  ? order.order_status.replace(/_/g, " ")
+                  : "Processing"}
               </Badge>
             </div>
           </CardHeader>
@@ -374,19 +385,19 @@ export default function TrackOrderPage({ params }) {
                 </div>
               </div>
               <Progress
-                value={getProgressValue(order.status)}
+                value={getProgressValue(order.order_status)}
                 className="h-2"
               />
               <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mt-2 text-xs">
                 <div className="text-center">
                   <div
                     className={`w-6 h-6 mx-auto rounded-full flex items-center justify-center ${
-                      getStatusStep(order.status) >= 0
+                      getStatusStep(order.order_status) >= 0
                         ? "bg-green-500 text-white"
                         : "bg-gray-200 text-gray-500"
                     }`}
                   >
-                    {getStatusStep(order.status) > 0 ? (
+                    {getStatusStep(order.order_status) > 0 ? (
                       <Check className="h-3 w-3" />
                     ) : (
                       "1"
@@ -397,12 +408,12 @@ export default function TrackOrderPage({ params }) {
                 <div className="text-center">
                   <div
                     className={`w-6 h-6 mx-auto rounded-full flex items-center justify-center ${
-                      getStatusStep(order.status) >= 1
+                      getStatusStep(order.order_status) >= 1
                         ? "bg-green-500 text-white"
                         : "bg-gray-200 text-gray-500"
                     }`}
                   >
-                    {getStatusStep(order.status) > 1 ? (
+                    {getStatusStep(order.order_status) > 1 ? (
                       <Check className="h-3 w-3" />
                     ) : (
                       "2"
@@ -413,12 +424,12 @@ export default function TrackOrderPage({ params }) {
                 <div className="text-center">
                   <div
                     className={`w-6 h-6 mx-auto rounded-full flex items-center justify-center ${
-                      getStatusStep(order.status) >= 2
+                      getStatusStep(order.order_status) >= 2
                         ? "bg-green-500 text-white"
                         : "bg-gray-200 text-gray-500"
                     }`}
                   >
-                    {getStatusStep(order.status) > 2 ? (
+                    {getStatusStep(order.order_status) > 2 ? (
                       <Check className="h-3 w-3" />
                     ) : (
                       "3"
@@ -429,12 +440,12 @@ export default function TrackOrderPage({ params }) {
                 <div className="text-center">
                   <div
                     className={`w-6 h-6 mx-auto rounded-full flex items-center justify-center ${
-                      getStatusStep(order.status) >= 3
+                      getStatusStep(order.order_status) >= 3
                         ? "bg-green-500 text-white"
                         : "bg-gray-200 text-gray-500"
                     }`}
                   >
-                    {getStatusStep(order.status) > 3 ? (
+                    {getStatusStep(order.order_status) > 3 ? (
                       <Check className="h-3 w-3" />
                     ) : (
                       "4"
@@ -445,12 +456,12 @@ export default function TrackOrderPage({ params }) {
                 <div className="text-center">
                   <div
                     className={`w-6 h-6 mx-auto rounded-full flex items-center justify-center ${
-                      getStatusStep(order.status) >= 4
+                      getStatusStep(order.order_status) >= 4
                         ? "bg-green-500 text-white"
                         : "bg-gray-200 text-gray-500"
                     }`}
                   >
-                    {getStatusStep(order.status) > 4 ? (
+                    {getStatusStep(order.order_status) > 4 ? (
                       <Check className="h-3 w-3" />
                     ) : (
                       "5"
@@ -461,7 +472,7 @@ export default function TrackOrderPage({ params }) {
                 <div className="text-center">
                   <div
                     className={`w-6 h-6 mx-auto rounded-full flex items-center justify-center ${
-                      getStatusStep(order.status) >= 5
+                      getStatusStep(order.order_status) >= 5
                         ? "bg-green-500 text-white"
                         : "bg-gray-200 text-gray-500"
                     }`}
@@ -551,8 +562,8 @@ export default function TrackOrderPage({ params }) {
                           Order Status
                         </h4>
                         <p className="text-gray-600">
-                          {order?.status
-                            ? order.status.replace(/_/g, " ")
+                          {order?.order_status
+                            ? order.order_status.replace(/_/g, " ")
                             : "Processing"}
                         </p>
                         {delivery.picked_up_at && (
