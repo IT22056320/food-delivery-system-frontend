@@ -16,6 +16,7 @@ import {
   Check,
   LogOut,
   MapPin,
+  Info,
 } from "lucide-react";
 import {
   Card,
@@ -37,6 +38,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { loadStripe } from "@stripe/stripe-js";
 import {
@@ -47,6 +54,8 @@ import {
 } from "@stripe/react-stripe-js";
 import LocationPicker from "@/components/location-picker";
 import GoogleMapsLoader from "@/components/google-maps-loader";
+import { calculateDistance, calculateDeliveryFee } from "@/lib/utils";
+import { getRestaurantLocation } from "@/lib/restaurant-api";
 
 // Initialize Stripe with the publishable key directly
 // This ensures the key is available at runtime
@@ -154,6 +163,15 @@ export default function CheckoutPage() {
   const [orderId, setOrderId] = useState("");
   const [orderCreated, setOrderCreated] = useState(false);
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
+  const [restaurantLocation, setRestaurantLocation] = useState(null);
+  const [deliveryFeeDetails, setDeliveryFeeDetails] = useState({
+    fee: 2.99,
+    baseFee: 1.99,
+    distanceFee: 1.0,
+    discount: 0,
+    formula: "Base fee + Distance fee",
+  });
+  const [deliveryDistance, setDeliveryDistance] = useState(0);
   const apiUrl = "http://localhost:5002/api";
 
   const [form, setForm] = useState({
@@ -194,7 +212,13 @@ export default function CheckoutPage() {
       return;
     }
 
-    setCart(JSON.parse(savedCart));
+    const parsedCart = JSON.parse(savedCart);
+    setCart(parsedCart);
+
+    // Fetch restaurant location for delivery fee calculation
+    if (parsedCart && parsedCart.restaurantId) {
+      fetchRestaurantLocation(parsedCart.restaurantId);
+    }
 
     // Pre-fill form with user data if available
     if (user) {
@@ -205,6 +229,45 @@ export default function CheckoutPage() {
       }));
     }
   }, [user, router]);
+
+  // Fetch restaurant location
+  const fetchRestaurantLocation = async (restaurantId) => {
+    try {
+      const location = await getRestaurantLocation(restaurantId);
+      if (location) {
+        setRestaurantLocation(location);
+        console.log("Restaurant location fetched:", location);
+      }
+    } catch (error) {
+      console.error("Error fetching restaurant location:", error);
+    }
+  };
+
+  // Calculate delivery fee when location changes
+  useEffect(() => {
+    if (
+      restaurantLocation &&
+      form.location.coordinates.lat &&
+      form.location.coordinates.lng &&
+      cart
+    ) {
+      // Calculate distance between restaurant and delivery location
+      const distance = calculateDistance(
+        restaurantLocation.coordinates,
+        form.location.coordinates
+      );
+
+      setDeliveryDistance(distance);
+
+      // Calculate delivery fee based on distance and order total
+      const feeDetails = calculateDeliveryFee(distance, cart.total);
+      setDeliveryFeeDetails(feeDetails);
+
+      console.log(
+        `Distance: ${distance.toFixed(2)} km, Delivery Fee: $${feeDetails.fee}`
+      );
+    }
+  }, [restaurantLocation, form.location.coordinates, cart]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -277,6 +340,18 @@ export default function CheckoutPage() {
       const lat = Number(form.location.coordinates.lat);
       const lng = Number(form.location.coordinates.lng);
 
+      // Calculate tax (8% of total price)
+      const taxRate = 0.08;
+      const taxAmount = Number.parseFloat((cart.total * taxRate).toFixed(2));
+
+      // Use the dynamically calculated delivery fee
+      const deliveryFee = deliveryFeeDetails.fee;
+
+      // Calculate final price with dynamic delivery fee
+      const finalPrice = Number.parseFloat(
+        (cart.total + deliveryFee + taxAmount).toFixed(2)
+      );
+
       // Prepare order data
       const orderData = {
         restaurant_id: cart.restaurantId,
@@ -286,7 +361,11 @@ export default function CheckoutPage() {
           price: item.price,
           quantity: item.quantity,
         })),
-        total_price: cart.total + 2.99 + cart.total * 0.08, // Subtotal + delivery fee + tax
+        total_price: finalPrice,
+        subtotal: cart.total,
+        tax_amount: taxAmount,
+        delivery_fee: deliveryFee,
+        delivery_distance: deliveryDistance,
         delivery_address: form.address,
         delivery_location: {
           address: form.address,
@@ -346,7 +425,7 @@ export default function CheckoutPage() {
               },
               credentials: "include",
               body: JSON.stringify({
-                amount: cart.total + 2.99 + cart.total * 0.08,
+                amount: finalPrice,
                 order_id: newOrderId,
                 metadata: {
                   customer_id: user?.id,
@@ -364,7 +443,7 @@ export default function CheckoutPage() {
           setClientSecret(paymentData.clientSecret);
           setOrderCreated(true);
         } catch (paymentError) {
-          console.error("Payment setup error:", paymentError);
+          console.error("Payment service error:", paymentError);
           toast.error(
             "Payment setup failed. Please try again or choose a different payment method."
           );
@@ -783,10 +862,46 @@ export default function CheckoutPage() {
                       <span className="text-gray-500">Subtotal</span>
                       <span>${cart.total.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Delivery Fee</span>
-                      <span>$2.99</span>
+
+                    <div className="flex justify-between text-sm items-center">
+                      <div className="flex items-center">
+                        <span className="text-gray-500 mr-1">Delivery Fee</span>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-3.5 w-3.5 text-gray-400 cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p className="font-medium">
+                                Delivery Fee Breakdown:
+                              </p>
+                              <p className="text-xs mt-1">
+                                Distance: {deliveryDistance.toFixed(2)} km
+                              </p>
+                              <p className="text-xs">
+                                Base Fee: $
+                                {deliveryFeeDetails.baseFee.toFixed(2)}
+                              </p>
+                              <p className="text-xs">
+                                Distance Fee: $
+                                {deliveryFeeDetails.distanceFee.toFixed(2)}
+                              </p>
+                              {deliveryFeeDetails.discount > 0 && (
+                                <p className="text-xs">
+                                  Order Discount: -$
+                                  {deliveryFeeDetails.discount.toFixed(2)}
+                                </p>
+                              )}
+                              <p className="text-xs mt-1 italic">
+                                {deliveryFeeDetails.formula}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                      <span>${deliveryFeeDetails.fee.toFixed(2)}</span>
                     </div>
+
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">Tax (8%)</span>
                       <span>${(cart.total * 0.08).toFixed(2)}</span>
@@ -794,7 +909,12 @@ export default function CheckoutPage() {
                     <div className="flex justify-between font-bold pt-2 border-t">
                       <span>Total</span>
                       <span>
-                        ${(cart.total + 2.99 + cart.total * 0.08).toFixed(2)}
+                        $
+                        {(
+                          cart.total +
+                          deliveryFeeDetails.fee +
+                          cart.total * 0.08
+                        ).toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -810,7 +930,7 @@ export default function CheckoutPage() {
                   <Button
                     className="w-full bg-orange-500 hover:bg-orange-600"
                     onClick={handleSubmit}
-                    disabled={isLoading}
+                    disabled={isLoading || !form.location?.coordinates?.lat}
                   >
                     {isLoading ? (
                       <div className="flex items-center gap-2">
