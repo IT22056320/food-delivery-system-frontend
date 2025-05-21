@@ -480,7 +480,7 @@ export default function AdminTransactionsPage() {
                           className="border-b hover:bg-muted/50"
                         >
                           <td className="py-3 px-4 font-mono text-sm">
-                            {transaction._id}
+                            {transaction.restaurantName}
                           </td>
                           <td className="py-3 px-4">
                             {formatDate(transaction.createdAt)}
