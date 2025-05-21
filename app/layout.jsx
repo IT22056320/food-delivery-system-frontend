@@ -2,6 +2,7 @@ import { Inter } from "next/font/google";
 import { AuthProvider } from "@/context/auth-context";
 import { CartProvider } from "@/hooks/use-cart";
 import { FavoritesProvider } from "@/hooks/use-favorites";
+import { Toaster } from "sonner";
 import "./globals.css";
 import GoogleMapsLoader from "@/components/google-maps-loader";
 
@@ -25,6 +26,7 @@ export default function RootLayout({ children }) {
             </CartProvider>
           </GoogleMapsLoader>
         </AuthProvider>
+        <Toaster position="top-right" richColors />
       </body>
     </html>
   );

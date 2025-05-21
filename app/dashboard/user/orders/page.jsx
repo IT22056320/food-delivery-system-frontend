@@ -173,26 +173,6 @@ export default function UserOrdersPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 p-6">
       <div className="max-w-4xl mx-auto">
-        <div className="bg-amber-100 border-l-4 border-amber-500 p-4 mb-6 rounded-md shadow-sm">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-amber-800">
-                Development Mode
-              </h3>
-              <div className="mt-2 text-sm text-amber-700">
-                <p>
-                  Authorization checks have been bypassed for development
-                  purposes. All orders will be accessible regardless of
-                  ownership.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <Button
           variant="ghost"
           className="mb-6"

@@ -17,7 +17,6 @@ import {
   User,
   Package,
   Check,
-  AlertTriangle,
 } from "lucide-react";
 import DeliveryMap from "@/components/delivery-map";
 import { toast } from "sonner";
@@ -32,7 +31,6 @@ export default function TrackOrderPage({ params }) {
   const [delivery, setDelivery] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [bypassedAuth, setBypassedAuth] = useState(false);
 
   useEffect(() => {
     if (!loading) {
@@ -56,7 +54,6 @@ export default function TrackOrderPage({ params }) {
 
       // Check if this is a mock/bypassed order
       if (orderData.is_mock) {
-        setBypassedAuth(true);
         // For mock orders, create mock delivery data
         setDelivery(createMockDelivery(orderData));
         return;
@@ -101,7 +98,6 @@ export default function TrackOrderPage({ params }) {
           // For development, create a mock delivery if none exists
           if (orderData.order_status === "OUT_FOR_DELIVERY") {
             setDelivery(createMockDelivery(orderData));
-            setBypassedAuth(true);
           }
         }
       }
@@ -157,7 +153,6 @@ export default function TrackOrderPage({ params }) {
       picked_up_at:
         orderData.out_delivery_time ||
         new Date(now.getTime() - 20 * 60 * 1000).toISOString(),
-      is_mock: true,
     };
   };
 
@@ -314,30 +309,6 @@ export default function TrackOrderPage({ params }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 p-6">
       <div className="max-w-4xl mx-auto">
-        {bypassedAuth && (
-          <div className="bg-amber-100 border-l-4 border-amber-500 p-4 mb-6 rounded-md shadow-sm">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-amber-800">
-                  Development Mode
-                </h3>
-                <div className="mt-2 text-sm text-amber-700">
-                  <p>
-                    Authorization checks have been bypassed for development
-                    purposes.
-                    {order.is_mock
-                      ? " This is a mock order generated for development."
-                      : " This order may not belong to the current user."}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         <Button
           variant="ghost"
           className="mb-6"
